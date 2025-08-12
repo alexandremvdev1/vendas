@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Pagar com cartão • Pedido #{{ order.id }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body{background:#f6f8fb;}
+    .nav-lite{background:linear-gradient(90deg,#0b1020,#111a3a);}
+    .card-clean{border:none; box-shadow:0 10px 24px rgba(17,24,39,.08);}
+    .muted{color:#6b7280;}
+    .loading{opacity:.6; pointer-events:none;}
+  </style>
+  <script src="https://sdk.mercadopago.com/js/v2"></script>
+</head>
+<body>
+<nav class="navbar nav-lite navbar-dark">
+  <div class="container">
+    <a class="navbar-brand" href="{% url 'home' %}">Loja Digital</a>
+  </div>
+</nav>
+
+<main class="container py-4 py-md-5">
+  <div class="row g-4">
+    <div class="col-12 col-lg-8">
+      <div class="card card-clean p-3 p-md-4">
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+          <h1 class="h5 m-0">Pagamento com cartão • Pedido #{{ order.id }}</h1>
+          <div class="fw-bold">Total: R$ {{ order.amount }}</div>
+        </div>
+        <hr class="my-3">
+
+        <div id="feedback" class="alert d-none" role="alert"></div>
+
+        <div id="cardPaymentBrick_container"></div>
+
+        <p class="muted mt-3 mb-0">Se o pagamento ficar em análise, você será levado para a página de pendente. Assim que for aprovado, a página atualizará para o download.</p>
+
+        <div class="mt-3">
+          <a href="{% url 'payment_pending' order.id %}" class="btn btn-outline-secondary btn-sm">Ver status do pedido</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  const PUBLIC_KEY = "{{ PUBLIC_KEY|default:'' }}";
+  const ORDER_ID = {{ order.id }};
+  const AMOUNT = Number("{{ order.amount }}".replace(',', '.')) || 0;
+
+  const feedback = document.getElementById('feedback');
+  function showMsg(type, text){
+    feedback.className = 'alert alert-' + type;
+    feedback.textContent = text;
+    feedback.classList.remove('d-none');
+  }
+
+  if (!PUBLIC_KEY){
+    showMsg('danger', 'Chave pública do Mercado Pago não configurada.');
+    throw new Error('MP_PUBLIC_KEY ausente');
+  }
+
+  const mp = new MercadoPago(PUBLIC_KEY, { locale: 'pt-BR' });
+  const bricksBuilder = mp.bricks();
+
+  bricksBuilder.create('cardPayment', 'cardPaymentBrick_container', {
+    initialization: {
+      amount: AMOUNT, // valor total
+      payer: {
+        email: "{{ order.customer.email|escapejs }}",
+        identification: {
+          type: "CPF",
+          number: "{{ order.customer.cpf|default_if_none:''|escapejs }}".replace(/\D/g,'')
+        }
+      }
+    },
+    customization: {
+      visual: {
+        style: {
+          theme: 'default' // ou 'dark'
+        }
+      },
+      paymentMethods: {
+        maxInstallments: 12
+      }
+    },
+    callbacks: {
+      onReady: () => {
+        // Brick pronto
+      },
+      onSubmit: async (cardFormData) => {
+        // Envia token e dados ao backend
+        const payload = {
+          order_id: ORDER_ID,
+          token: cardFormData.token,
+          installments: cardFormData.installments || 1,
+          payment_method_id: cardFormData.paymentMethodId,
+          issuer_id: cardFormData.issuerId,
+          payer: {
+            email: cardFormData.payer.email || "{{ order.customer.email|escapejs }}",
+            identification: {
+              type: cardFormData.payer.identification.type || "CPF",
+              number: (cardFormData.payer.identification.number || "{{ order.customer.cpf|escapejs }}").replace(/\D/g,'')
+            }
+          }
+        };
+
+        try{
+          const resp = await fetch("{% url 'mp_card_process' %}", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify(payload)
+          });
+          const j = await resp.json();
+
+          if (j.status === 'paid') {
+            window.location.href = "{% url 'payment_success' order.id %}";
+            return;
+          }
+          if (j.status === 'pending' || j.mp_status === 'in_process' || j.mp_status === 'pending_review') {
+            // Em análise ou aguardando, vai para a página de pendente
+            window.location.href = "{% url 'payment_pending' order.id %}";
+            return;
+          }
+          // rejeitado/erro
+          showMsg('danger', 'Pagamento não aprovado. Verifique os dados do cartão ou tente outro método.');
+        }catch(e){
+          console.error(e);
+          showMsg('danger', 'Erro ao processar o pagamento. Tente novamente.');
+        }
+      },
+      onError: (error) => {
+        console.error(error);
+        showMsg('danger', 'Erro ao inicializar o formulário do cartão.');
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

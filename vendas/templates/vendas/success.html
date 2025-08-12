@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Pagamento confirmado • Pedido #{{ order.id }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --bg1:#0b1020; --bg2:#111a3a; --ink:#0f172a; --muted:#64748b;
+      --ring:rgba(37,99,235,.18);
+    }
+    body{background:#f6f8fb;}
+    .nav-lite{background:linear-gradient(90deg,var(--bg1),var(--bg2));}
+    .card-clean{border:none; box-shadow:0 10px 24px rgba(17,24,39,.08);}
+    .badge-pill{border-radius:999px; padding:.45rem .8rem; font-weight:600;}
+    .status-paid{background:#ecfdf5; color:#065f46;}
+    .product-img{max-height:240px; object-fit:cover;}
+    .code-mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,"Liberation Mono","Courier New", monospace;}
+    .btn-icon{display:inline-flex; align-items:center; gap:.5rem;}
+    .hero{
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(37,99,235,.18), transparent),
+        radial-gradient(1200px 600px at 110% -10%, rgba(16,185,129,.14), transparent),
+        linear-gradient(180deg,var(--bg1),#0f172a);
+      color:#fff;
+    }
+    .tile{
+      background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:1rem 1.25rem;
+    }
+    .small-muted{color:var(--muted);}
+  </style>
+</head>
+<body>
+<nav class="navbar nav-lite navbar-dark">
+  <div class="container d-flex align-items-center gap-3">
+    <!-- logo agora leva para a página pública -->
+    <a class="navbar-brand fw-bold" href="{% url 'catalog' %}">Loja Digital</a>
+
+    {% url 'sales_report' as sales_url %}
+    <div class="ms-auto d-none d-md-flex align-items-center gap-3">
+      {% if user.is_authenticated and user.is_staff and sales_url %}
+        <a class="link-light text-decoration-none" href="{{ sales_url }}">Relatório</a>
+      {% endif %}
+      {% if user.is_authenticated %}
+        <span class="text-light small">Olá, {{ user.username }}</span>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Sair</a>
+      {% else %}
+        <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<header class="hero py-4 py-md-5">
+  <div class="container d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+    <div>
+      <h1 class="h4 mb-1">Pagamento confirmado!</h1>
+      <p class="mb-0 text-light-emphasis">Pedido #{{ order.id }} • {{ order.product.title }}</p>
+    </div>
+    <span class="badge-pill status-paid">Pago</span>
+  </div>
+</header>
+
+<main class="container py-4 py-md-5">
+  <div class="row g-4">
+    <!-- Coluna esquerda: produto + resumo -->
+    <div class="col-12 col-lg-6">
+      <div class="card card-clean overflow-hidden">
+        {% if order.product.image %}
+          <img src="{{ order.product.image.url }}" alt="{{ order.product.title }}" class="w-100 product-img">
+        {% endif %}
+        <div class="card-body">
+          <h2 class="h5 mb-1">{{ order.product.title }}</h2>
+          <div class="text-muted mb-3">Valor pago: <strong>R$ {{ order.amount }}</strong></div>
+
+          <div class="tile mb-3">
+            <div class="row g-2 small">
+              <div class="col-5 small-muted">Pedido</div>
+              <div class="col-7">#{{ order.id }}</div>
+
+              <div class="col-5 small-muted">Status</div>
+              <div class="col-7"><span class="badge bg-success">Pago</span></div>
+
+              <div class="col-5 small-muted">Confirmado em</div>
+              <div class="col-7">{{ order.created_at|date:"d/m/Y H:i" }}</div>
+
+              <div class="col-5 small-muted">Downloads permitidos</div>
+              <div class="col-7">{{ link.max_downloads }}</div>
+
+              <div class="col-5 small-muted">Expira</div>
+              <div class="col-7">{{ link.expires_at|date:"d/m/Y H:i" }}</div>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2">
+            <!-- botão atualizado para a rota pública -->
+            <a class="btn btn-outline-secondary" href="{% url 'catalog' %}">Veja outros produtos</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coluna direita: download -->
+    <div class="col-12 col-lg-6">
+      <div class="card card-clean p-3 p-md-4">
+        <h2 class="h5">Seu download</h2>
+        <p class="text-muted mb-3">Clique para baixar agora. Você também pode copiar o link para usar em outro dispositivo.</p>
+
+        <div class="d-grid gap-2">
+          <a class="btn btn-success btn-lg btn-icon" href="{% url 'secure_download' link.token %}">
+            <span style="display:inline-block;width:1rem;height:1rem;border:.18rem solid #fff;border-top-color:transparent;border-right-color:transparent;transform:rotate(-45deg);margin-right:.1rem"></span>
+            Baixar agora
+          </a>
+
+          <div class="tile">
+            <label class="form-label mb-1 small-muted">Link direto (confidencial)</label>
+            <div class="input-group">
+              <input id="dl-url" type="text" class="form-control code-mono" readonly
+                     value="{{ request.build_absolute_uri|slice:':-1' }}{% url 'secure_download' link.token %}">
+              <button id="btn-copy" class="btn btn-outline-secondary" type="button">Copiar</button>
+            </div>
+            <div class="small text-muted mt-2">
+              Não compartilhe este link. Ele é pessoal, tem limite de uso ({{ link.max_downloads }} downloads) e expira em {{ link.expires_at|date:"d/m/Y H:i" }}.
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <h3 class="h6">Problemas para baixar?</h3>
+        <ul class="small text-muted mb-0">
+          <li>Tente abrir o link em outro navegador ou no modo anônimo.</li>
+          <li>Se sua internet for corporativa, pode haver bloqueios para arquivos.</li>
+          <li>O link só funciona até a data de expiração e tem limite de tentativas.</li>
+        </ul>
+        <p class="small text-muted mt-2 mb-0">
+          Precisa de ajuda? Responda o e-mail de confirmação que enviamos para <strong>{{ order.customer.email }}</strong>.
+        </p>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <!-- também volta para a pública -->
+        <a class="btn btn-outline-primary" href="{% url 'catalog' %}">Voltar à loja</a>
+        {% if user.is_authenticated %}
+          <a class="btn btn-outline-secondary" href="{% url 'logout' %}">Sair</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  const btn = document.getElementById('btn-copy');
+  if (btn){
+    btn.addEventListener('click', async () => {
+      const input = document.getElementById('dl-url');
+      if (!input) return;
+      try{
+        await navigator.clipboard.writeText(input.value);
+        const old = btn.textContent; btn.textContent = 'Copiado!';
+        setTimeout(()=> btn.textContent = old, 1200);
+      }catch(e){
+        input.select(); document.execCommand('copy');
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

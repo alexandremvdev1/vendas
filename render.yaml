@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: loja-digital
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+    startCommand: gunicorn loja.wsgi:application
+    postDeployCommand: python manage.py migrate
+    disk:
+      name: media
+      mountPath: /opt/render/project/src/media
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13

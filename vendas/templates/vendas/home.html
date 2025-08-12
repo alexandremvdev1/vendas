@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Loja Digital • Catálogo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18);
+      --g1:#0b1020; --g2:#111a3a;
+    }
+    body{ background:#f6f8fb; color:var(--ink); }
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .sidebar{ background:#0f172a; color:#cbd5e1; min-height:100vh; }
+    .sidebar a{ color:#cbd5e1; text-decoration:none; display:block; padding:.6rem .9rem; border-radius:.5rem; }
+    .sidebar a.active, .sidebar a:hover{ background:rgba(255,255,255,.08); color:#fff; }
+    .kpi{ background:#fff; border:1px solid #e5e7eb; border-radius:.8rem; padding:1rem 1.25rem; }
+    .toolbar .form-select, .toolbar .form-control{ border-radius:.6rem; border-color:#e5e7eb; }
+    .toolbar .form-select:focus, .toolbar .form-control:focus{ box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
+    .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); transition:transform .12s ease, box-shadow .12s ease; }
+    .card-clean:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(17,24,39,.12); }
+    .card-img-top{ aspect-ratio:16/10; object-fit:cover; }
+    .price{ font-weight:800; letter-spacing:.2px; }
+    .text-muted-2{ color:var(--muted); }
+    .sticky-topbar{ position: sticky; top: 0; z-index: 20; background:#ffffffd6; backdrop-filter: blur(6px); }
+    .table thead th{ font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+    .empty{ border:1px dashed #cbd5e1; border-radius:12px; background:#fff; padding:2rem; text-align:center; }
+    @media (max-width:991.98px){ .sidebar{min-height:auto;} }
+  </style>
+</head>
+<body>
+
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <div class="d-flex align-items-center gap-3">
+      <button class="btn btn-outline-light btn-sm d-lg-none" id="toggleSidebar">☰</button>
+      <a class="navbar-brand fw-bold" href="{% url 'home' %}">Loja Digital</a>
+    </div>
+    
+    {% url 'sales_report' as sales_url %}
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      {% if user.is_authenticated and user.is_staff and sales_url %}
+        <a class="btn btn-sm btn-outline-light" href="{{ sales_url }}">Relatório</a>
+        <a class="btn btn-sm btn-outline-light" href="{% url 'admin:vendas_product_add' %}">+ Produto</a>
+      {% endif %}
+      {% if user.is_authenticated and user.is_staff %}
+  <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
+{% endif %}
+
+      {% if user.is_authenticated %}
+        <span class="text-light small d-none d-md-inline">Olá, {{ user.username }}</span>
+        {% include "partials/logout_button.html" %}
+      {% else %}
+        <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid">
+  <div class="row">
+    <!-- Sidebar -->
+    <aside class="col-lg-2 p-3 sidebar d-none d-lg-block" id="sb">
+      <div class="mb-3 px-1 text-uppercase small" style="color:#93a3b8;">Navegação</div>
+      <nav class="d-grid gap-1">
+        <a href="{% url 'home' %}" class="active">Catálogo</a>
+        {% if user.is_staff %}
+          <a href="{% url 'admin:vendas_product_changelist' %}">Produtos (Admin)</a>
+          <a href="{% url 'admin:vendas_order_changelist' %}">Pedidos (Admin)</a>
+          {% if sales_url %}<a href="{{ sales_url }}">Relatório</a>{% endif %}
+        {% endif %}
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <main class="col-lg-10 p-3 p-lg-4">
+      <!-- KPIs -->
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="kpi">
+            <div class="small text-muted-2">Produtos ativos</div>
+            <div class="fs-4 fw-bold">{{ products|length }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="kpi">
+            <div class="small text-muted-2">Hoje (novos)</div>
+            <div class="fs-4 fw-bold">{{ kpi_today_new|default:0 }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="kpi">
+            <div class="small text-muted-2">Ticket médio (30d)</div>
+            <div class="fs-4 fw-bold">
+              {% if kpi_pedidos_30d %}R$ {{ kpi_ticket_30d|floatformat:2 }}{% else %}—{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="kpi">
+            <div class="small text-muted-2">Receita (30d)</div>
+            <div class="fs-4 fw-bold">R$ {{ kpi_receita_30d|default:0|floatformat:2 }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="sticky-topbar border rounded-3 p-3 mb-3">
+        <div class="row g-3 align-items-end toolbar">
+          <div class="col-12 col-md-4">
+            <label class="form-label small text-muted-2 mb-1" for="q">Busca</label>
+            <div class="input-group">
+              <span class="input-group-text bg-white">🔎</span>
+              <input id="q" type="search" class="form-control" placeholder="Título ou descrição…">
+              <button id="btn-clear" class="btn btn-outline-secondary">Limpar</button>
+            </div>
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted-2 mb-1" for="minPrice">Preço mín. (R$)</label>
+            <input id="minPrice" type="number" min="0" step="1" class="form-control" placeholder="0">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted-2 mb-1" for="maxPrice">Preço máx. (R$)</label>
+            <input id="maxPrice" type="number" min="0" step="1" class="form-control" placeholder="999">
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label small text-muted-2 mb-1" for="sortSel">Ordenar</label>
+            <select id="sortSel" class="form-select">
+              <option value="featured">Destaques</option>
+              <option value="newest">Mais recentes</option>
+              <option value="price_asc">Menor preço</option>
+              <option value="price_desc">Maior preço</option>
+              <option value="title_asc">Título (A→Z)</option>
+              <option value="title_desc">Título (Z→A)</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-2 d-flex gap-2">
+            <button id="btnCards" class="btn btn-primary w-50" aria-pressed="true">Cards</button>
+            <button id="btnTable" class="btn btn-outline-primary w-50" aria-pressed="false">Tabela</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h2 class="h6 m-0">Resultados <span id="resCount" class="text-muted-2 fw-normal"></span></h2>
+        <div class="d-flex gap-2">
+          <button id="btnExport" class="btn btn-outline-secondary btn-sm">Exportar CSV</button>
+          {% if user.is_staff %}
+            <a class="btn btn-primary btn-sm" href="{% url 'admin:vendas_product_add' %}">+ Novo produto</a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if products %}
+        <!-- GRID (cards) -->
+        <div id="gridWrap">
+          <div id="grid" class="row g-4">
+            {% for p in products %}
+              <div class="col-12 col-sm-6 col-xl-4 product-card"
+                   data-title="{{ p.title|lower }}"
+                   data-desc="{{ p.description|default:''|lower }}"
+                   data-price="{{ p.price|floatformat:2 }}"
+                   data-created="{{ p.created_at|date:'U' }}">
+                <div class="card card-clean h-100">
+                  {% if p.image %}
+                    <img src="{{ p.image.url }}" class="card-img-top" alt="{{ p.title }}">
+                  {% else %}
+                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background:#eef2f7;">
+                      <span class="text-muted">Sem imagem</span>
+                    </div>
+                  {% endif %}
+                  <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <h3 class="h6 mb-1">{{ p.title }}</h3>
+                      {% if forloop.counter0 < 3 %}<span class="badge text-bg-success">Novo</span>{% endif %}
+                    </div>
+                    <div class="price fs-5 mb-2">R$ {{ p.price }}</div>
+                    <p class="text-muted-2 flex-grow-1 mb-3">{{ p.description|default:""|truncatewords:24 }}</p>
+
+                    <div class="d-grid gap-2">
+                      <a class="btn btn-primary" href="{{ p.get_checkout_url }}">Ir ao checkout</a>
+                      <button class="btn btn-outline-dark js-copy"
+                              type="button"
+                              data-url="{{ request.scheme }}://{{ request.get_host }}{{ p.get_checkout_url }}">
+                        Copiar link
+                      </button>
+                      {% if user.is_staff %}
+                        <div class="d-flex gap-2">
+                          <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:vendas_product_change' p.id %}">Editar</a>
+                          <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="text-center mt-4">
+            <button id="btnMore" class="btn btn-outline-primary">Carregar mais</button>
+          </div>
+          <div id="emptyCards" class="empty mt-4 d-none">
+            <div class="h6 mb-1">Nenhum produto encontrado</div>
+            <div class="text-muted-2">Ajuste a busca ou os filtros.</div>
+          </div>
+        </div>
+
+        <!-- TABLE (admin-like) -->
+        <div id="tableWrap" class="d-none">
+          <div class="table-responsive">
+            <table id="tbl" class="table align-middle bg-white rounded-3 overflow-hidden">
+              <thead>
+                <tr>
+                  <th style="width:40%">Produto</th>
+                  <th style="width:15%">Preço</th>
+                  <th style="width:20%">Criado em</th>
+                  <th style="width:25%">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in products %}
+                  <tr class="row-item"
+                      data-title="{{ p.title|lower }}"
+                      data-desc="{{ p.description|default:''|lower }}"
+                      data-price="{{ p.price|floatformat:2 }}"
+                      data-created="{{ p.created_at|date:'U' }}">
+                    <td>
+                      <div class="fw-semibold">{{ p.title }}</div>
+                      <div class="small text-muted-2 text-truncate" style="max-width:480px;">
+                        {{ p.description|default:""|truncatewords:24 }}
+                      </div>
+                    </td>
+                    <td>R$ {{ p.price }}</td>
+                    <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
+                    <td>
+                      <div class="d-flex flex-wrap gap-2">
+                        <a class="btn btn-sm btn-primary" href="{{ p.get_checkout_url }}">Checkout</a>
+                        <button class="btn btn-sm btn-outline-dark js-copy"
+                                type="button"
+                                data-url="{{ request.scheme }}://{{ request.get_host }}{{ p.get_checkout_url }}">
+                          Copiar link
+                        </button>
+                        {% if user.is_staff %}
+                          <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:vendas_product_change' p.id %}">Editar</a>
+                          <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
+                        {% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div id="emptyTable" class="empty mt-4 d-none">
+            <div class="h6 mb-1">Nenhum produto encontrado</div>
+            <div class="text-muted-2">Ajuste a busca ou os filtros.</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="empty">
+          <div class="h6 mb-1">Sem produtos no momento</div>
+          <div class="text-muted-2 mb-3">Volte em breve — estamos preparando novidades.</div>
+          {% if user.is_staff %}
+            <a class="btn btn-primary" href="{% url 'admin:vendas_product_add' %}">+ Cadastrar produto</a>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <footer class="py-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center text-muted-2">
+          <div>© {% now "Y" %} Loja Digital - Desenvolvido por Alexandre Martins Vieira</div>
+          <div class="small">Pagamentos via Mercado Pago • Downloads imediatos</div>
+        </div>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Sidebar mobile
+  const sb = document.getElementById('sb');
+  const tgl = document.getElementById('toggleSidebar');
+  if (tgl && sb){ tgl.addEventListener('click', ()=> sb.classList.toggle('d-none')); }
+
+  const $q        = document.getElementById('q');
+  const $clear    = document.getElementById('btn-clear');
+  const $min      = document.getElementById('minPrice');
+  const $max      = document.getElementById('maxPrice');
+  const $sort     = document.getElementById('sortSel');
+
+  const $gridWrap = document.getElementById('gridWrap');
+  const $grid     = document.getElementById('grid');
+  const cards     = $grid ? Array.from($grid.querySelectorAll('.product-card')) : [];
+  const $emptyCards = document.getElementById('emptyCards');
+  const $btnMore  = document.getElementById('btnMore');
+
+  const $tableWrap = document.getElementById('tableWrap');
+  const $tbl       = document.getElementById('tbl');
+  const rows       = $tbl ? Array.from($tbl.querySelectorAll('.row-item')) : [];
+  const $emptyTable= document.getElementById('emptyTable');
+
+  const $btnCards = document.getElementById('btnCards');
+  const $btnTable = document.getElementById('btnTable');
+  const $count    = document.getElementById('resCount');
+  const $btnExport= document.getElementById('btnExport');
+
+  let visible = 12;
+  let filtered = cards;     // para cards
+  let filteredRows = rows;  // para tabela
+  let view = 'cards';       // 'cards' | 'table'
+
+  function norm(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+  function priceOf(el){ return parseFloat(el.dataset.price || '0'); }
+  function createdOf(el){ return parseInt(el.dataset.created || '0', 10); }
+  function titleOf(el){ return el.dataset.title || ''; }
+
+  function applyFilters(){
+    const q   = norm($q ? $q.value : '');
+    const pmin= parseFloat($min && $min.value ? $min.value : '-1');
+    const pmax= parseFloat($max && $max.value ? $max.value : '100000000');
+
+    // Cards
+    filtered = cards.filter(card=>{
+      const t = norm(card.dataset.title);
+      const d = norm(card.dataset.desc);
+      const inText = !q || t.includes(q) || d.includes(q);
+      const p = priceOf(card);
+      const inPrice = (isNaN(pmin) || p >= pmin) && (isNaN(pmax) || p <= pmax);
+      return inText && inPrice;
+    });
+
+    // Table
+    filteredRows = rows.filter(tr=>{
+      const t = norm(tr.dataset.title);
+      const d = norm(tr.dataset.desc);
+      const inText = !q || t.includes(q) || d.includes(q);
+      const p = priceOf(tr);
+      const inPrice = (isNaN(pmin) || p >= pmin) && (isNaN(pmax) || p <= pmax);
+      return inText && inPrice;
+    });
+
+    applySort();
+    render();
+  }
+
+  function applySort(){
+    const mode = $sort ? $sort.value : 'featured';
+    const sorter = (a,b)=>{
+      if (mode === 'newest')     return createdOf(b) - createdOf(a);
+      if (mode === 'price_asc')  return priceOf(a) - priceOf(b);
+      if (mode === 'price_desc') return priceOf(b) - priceOf(a);
+      if (mode === 'title_asc')  return titleOf(a).localeCompare(titleOf(b));
+      if (mode === 'title_desc') return titleOf(b).localeCompare(titleOf(a));
+      return 0;
+    };
+    filtered.sort(sorter);
+    filteredRows.sort(sorter);
+  }
+
+  function render(){
+    // Cards
+    if ($grid){
+      cards.forEach(c=> c.classList.add('d-none'));
+      const total = filtered.length;
+      const toShow = filtered.slice(0, visible);
+      toShow.forEach(c=> c.classList.remove('d-none'));
+      if ($emptyCards) $emptyCards.classList.toggle('d-none', total !== 0);
+      if ($btnMore) $btnMore.classList.toggle('d-none', visible >= total);
+      if (view === 'cards') $count && ($count.textContent = total ? `• ${total} resultado${total>1?'s':''}` : '');
+    }
+
+    // Table
+    if ($tbl){
+      rows.forEach(r=> r.classList.add('d-none'));
+      const totalT = filteredRows.length;
+      filteredRows.forEach(r=> r.classList.remove('d-none'));
+      if ($emptyTable) $emptyTable.classList.toggle('d-none', totalT !== 0);
+      if (view === 'table') $count && ($count.textContent = totalT ? `• ${totalT} resultado${totalT>1?'s':''}` : '');
+    }
+  }
+
+  function setView(v){
+    view = v;
+    if ($gridWrap) $gridWrap.classList.toggle('d-none', v !== 'cards');
+    if ($tableWrap) $tableWrap.classList.toggle('d-none', v !== 'table');
+    if ($btnCards){ $btnCards.classList.toggle('btn-primary', v==='cards'); $btnCards.classList.toggle('btn-outline-primary', v!=='cards'); }
+    if ($btnTable){ $btnTable.classList.toggle('btn-primary', v==='table'); $btnTable.classList.toggle('btn-outline-primary', v!=='table'); }
+    render();
+  }
+
+  $btnCards && $btnCards.addEventListener('click', ()=> setView('cards'));
+  $btnTable && $btnTable.addEventListener('click', ()=> setView('table'));
+
+  $q   && $q.addEventListener('input', ()=>{ visible = 12; applyFilters(); });
+  $min && $min.addEventListener('input', ()=>{ visible = 12; applyFilters(); });
+  $max && $max.addEventListener('input', ()=>{ visible = 12; applyFilters(); });
+  $sort&& $sort.addEventListener('change', applyFilters);
+
+  $clear && $clear.addEventListener('click', ()=>{
+    $q && ($q.value = '');
+    $min && ($min.value = '');
+    $max && ($max.value = '');
+    visible = 12;
+    applyFilters();
+    $q && $q.focus();
+  });
+
+  $btnMore && $btnMore.addEventListener('click', ()=>{
+    visible += 12;
+    render();
+  });
+
+  document.addEventListener('click', async (ev)=>{
+    const copyBtn = ev.target.closest('.js-copy');
+    if (!copyBtn) return;
+    const directUrl = copyBtn.dataset.url;
+    try{
+      await navigator.clipboard.writeText(directUrl);
+      const old = copyBtn.textContent;
+      copyBtn.textContent = 'Copiado!';
+      setTimeout(()=> copyBtn.textContent = old, 1200);
+    }catch(e){ alert(directUrl); }
+  });
+
+  // init
+  applyFilters();
+})();
+</script>
+
+</body>
+</html>
