@@ -9,6 +9,16 @@ from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
 
+# ===== Cloudinary storages (opcional, com fallback local) =====
+try:
+    # pip install cloudinary django-cloudinary-storage
+    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+    MEDIA_STORAGE = MediaCloudinaryStorage()
+    RAW_STORAGE = RawMediaCloudinaryStorage()
+except Exception:
+    MEDIA_STORAGE = None
+    RAW_STORAGE = None
+
 
 # ---------------------------------------
 # Credenciais do gateway (opcional, recomendado)
@@ -97,9 +107,25 @@ class Product(models.Model):
     slug = models.SlugField(unique=True, max_length=180, editable=False)
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
-    image = models.ImageField("Imagem", upload_to="produtos/imagens/", blank=True, null=True)
+
+    # >>> Imagens no Cloudinary (Media) quando disponível; fallback local
+    image = models.ImageField(
+        "Imagem",
+        upload_to="produtos/imagens/",
+        blank=True,
+        null=True,
+        storage=MEDIA_STORAGE if MEDIA_STORAGE else None,
+    )
+
     video_url = models.URLField("Vídeo (URL)", blank=True)
-    digital_file = models.FileField("Arquivo digital", upload_to="produtos/arquivos/")
+
+    # >>> Arquivos digitais (PDF/ZIP) no Cloudinary "raw" quando disponível; fallback local
+    digital_file = models.FileField(
+        "Arquivo digital",
+        upload_to="produtos/arquivos/",
+        storage=RAW_STORAGE if RAW_STORAGE else None,
+    )
+
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
     active = models.BooleanField("Ativo", default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -193,7 +219,7 @@ class Order(models.Model):
             # envia o e-mail de pagamento confirmado
             try:
                 from .emails import send_order_paid_email  # import local p/ evitar circular
-                send_order_paid_email(self)  # usa settings.SITE_BASE_URL se não houver request
+                send_order_paid_email(self)
             except Exception:
                 # não deixa o fluxo de pagamento falhar por causa de e-mail
                 pass
