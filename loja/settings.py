@@ -1,11 +1,9 @@
 # loja/settings.py
 from pathlib import Path
 import os
-import dj_database_url          # pip install dj-database-url psycopg2-binary
-from dotenv import load_dotenv  # pip install python-dotenv
+import dj_database_url  # pip install dj-database-url psycopg2-binary
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")  # carrega variáveis do .env (apenas local)
 
 # ---------------- Core ----------------
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-fallback-key")
@@ -26,10 +24,33 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "vendas",
-
-    # Storage S3-compatível (Cloudflare R2)
-    "storages",                 # pip install django-storages boto3
 ]
+
+# ---- Cloudinary: ativa só se tiver credenciais (evita crash em dev/CI)
+CLOUDINARY_READY = bool(
+    os.getenv("CLOUDINARY_URL") or (
+        os.getenv("CLOUDINARY_CLOUD_NAME")
+        and os.getenv("CLOUDINARY_API_KEY")
+        and os.getenv("CLOUDINARY_API_SECRET")
+    )
+)
+
+if CLOUDINARY_READY:
+    INSTALLED_APPS += ["cloudinary", "cloudinary_storage"]
+
+    # Se você usa CLOUDINARY_URL, basta garantir HTTPS:
+    CLOUDINARY_STORAGE = {"SECURE": True}
+
+    # Se preferir, pode configurar explicitamente (opcional):
+    # CLOUDINARY_STORAGE = {
+    #     "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+    #     "API_KEY": os.getenv("CLOUDINARY_API_KEY", ""),
+    #     "API_SECRET": os.getenv("CLOUDINARY_API_SECRET", ""),
+    #     "SECURE": True,
+    # }
+
+    # Todos os FileField/ImageField irão para o Cloudinary
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 # ---------------- Middleware ----------------
 MIDDLEWARE = [
@@ -85,37 +106,9 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-# ---------------- Media (Cloudflare R2 via S3) ----------------
-MEDIA_URL = "/media/"               # apenas fallback/local
+# ---------------- Media (fallback local se Cloudinary estiver desligado) ----------------
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-
-R2_READY = all([
-    os.getenv("R2_ACCOUNT_ID"),
-    os.getenv("R2_BUCKET"),
-    os.getenv("R2_KEY_ID"),
-    os.getenv("R2_SECRET"),
-])
-
-if R2_READY:
-    AWS_ACCESS_KEY_ID        = os.getenv("R2_KEY_ID")
-    AWS_SECRET_ACCESS_KEY    = os.getenv("R2_SECRET")
-    AWS_STORAGE_BUCKET_NAME  = os.getenv("R2_BUCKET")  # ex: "vendas"
-    AWS_S3_ENDPOINT_URL      = f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
-    AWS_S3_REGION_NAME       = "auto"
-    AWS_S3_SIGNATURE_VERSION = "s3v4"
-    AWS_S3_ADDRESSING_STYLE  = "path"      # importante para R2
-
-    AWS_S3_FILE_OVERWRITE    = False
-    AWS_DEFAULT_ACL          = None
-    AWS_QUERYSTRING_AUTH     = True
-    AWS_QUERYSTRING_EXPIRE   = 3600  # 1 hora (ajuste se quiser menos)
-
-    AWS_S3_OBJECT_PARAMETERS = {
-        "CacheControl": "max-age=86400",  # 24h
-    }
-
-    # Faz todos os FileField/ImageField salvarem no R2
-    DEFAULT_FILE_STORAGE     = "storages.backends.s3boto3.S3Boto3Storage"
 
 # ---------------- Auth ----------------
 LOGIN_URL = "login"
@@ -139,8 +132,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --------- Mercado Pago ---------
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "")
-MP_PUBLIC_KEY = os.getenv("MP_PUBLIC_KEY", "")
-MP_WEBHOOK_URL = os.getenv("MP_WEBHOOK_URL", "")
+MP_PUBLIC_KEY   = os.getenv("MP_PUBLIC_KEY", "")
+MP_WEBHOOK_URL  = os.getenv("MP_WEBHOOK_URL", "")
 
 # --------- Logging ---------
 LOGGING = {
@@ -152,8 +145,7 @@ LOGGING = {
         "vendas.views": {"handlers": ["console"], "level": "INFO"},
         "mercadopago": {"handlers": ["console"], "level": "WARNING"},
         "django.request": {"handlers": ["console"], "level": "WARNING"},
-        "boto3": {"handlers": ["console"], "level": "WARNING"},
-        "botocore": {"handlers": ["console"], "level": "WARNING"},
+        "cloudinary": {"handlers": ["console"], "level": "INFO"},
     },
 }
 

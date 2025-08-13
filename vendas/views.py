@@ -1,4 +1,3 @@
-# vendas/views.py
 import os
 import re
 import json
@@ -7,8 +6,6 @@ from decimal import Decimal
 from datetime import timedelta
 from urllib.parse import urlparse
 
-import boto3
-from botocore.config import Config
 import mercadopago
 
 from django.conf import settings
@@ -18,12 +15,14 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, DecimalField, Q, Sum, Value
 from django.db.models.functions import Coalesce
-from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse, FileResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+
+from cloudinary.utils import private_download_url, cloudinary_url
 
 from .forms import CheckoutForm
 from .emails import send_order_created_email, send_payment_reminder_email
@@ -38,7 +37,6 @@ except Exception:
     def get_mp_public_key():
         return getattr(settings, "MP_PUBLIC_KEY", "")
 
-
 # -------------------- Mercado Pago: helpers --------------------
 def mp_sdk():
     token = get_mp_access_token()
@@ -47,12 +45,10 @@ def mp_sdk():
         raise RuntimeError("MP Access Token ausente")
     return mercadopago.SDK(token)
 
-
 def _ensure_external_ref(order: Order):
     if not order.external_ref:
         order.external_ref = f"order-{order.pk}"
         order.save(update_fields=["external_ref"])
-
 
 def build_mp_notification_url(request) -> str:
     """
@@ -77,7 +73,6 @@ def build_mp_notification_url(request) -> str:
     if host in {"localhost", "127.0.0.1"} or host.endswith(".local"):
         return ""
     return url
-
 
 # -------------------- PIX (Payments API) --------------------
 def create_pix_payment(product, customer, order, request):
@@ -141,7 +136,6 @@ def create_pix_payment(product, customer, order, request):
     order.save(update_fields=["payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return resp
 
-
 def _refresh_pix_from_mp(order: Order):
     """
     Reconsulta /v1/payments para preencher qr_code/qr_code_base64/ticket
@@ -181,20 +175,16 @@ def _refresh_pix_from_mp(order: Order):
 
     updates = []
     if qr_code and qr_code != order.pix_qr_code:
-        order.pix_qr_code = qr_code
-        updates.append("pix_qr_code")
+        order.pix_qr_code = qr_code; updates.append("pix_qr_code")
     if qr_b64 and qr_b64 != order.pix_qr_base64:
-        order.pix_qr_base64 = qr_b64
-        updates.append("pix_qr_base64")
+        order.pix_qr_base64 = qr_b64; updates.append("pix_qr_base64")
     if ticket and ticket != order.pix_ticket_url:
-        order.pix_ticket_url = ticket
-        updates.append("pix_ticket_url")
+        order.pix_ticket_url = ticket; updates.append("pix_ticket_url")
 
     if updates:
         order.save(update_fields=updates)
         return True
     return False
-
 
 # -------------------- Checkout Pro (Cartão) --------------------
 def create_card_preference(product, customer, order, request):
@@ -236,7 +226,6 @@ def create_card_preference(product, customer, order, request):
         "expires": True,
         "expiration_date_to": order.expires_at.isoformat(),
         "payment_methods": {
-            # habilita apenas crédito (exclui pix/boleto/transfer/etc)
             "excluded_payment_types": [
                 {"id": "ticket"}, {"id": "atm"}, {"id": "bank_transfer"},
                 {"id": "debit_card"}, {"id": "prepaid_card"}
@@ -276,7 +265,6 @@ def create_card_preference(product, customer, order, request):
         raise RuntimeError("Preference criada, mas init_point está vazio.")
     return url
 
-
 def start_card_checkout(request, order_id):
     """
     Inicia/continua o Checkout Pro (redireciona para o init_point).
@@ -304,13 +292,11 @@ def start_card_checkout(request, order_id):
 
     return redirect(url)
 
-
 def mp_return(request):
     """
     Retorno do Checkout Pro (back_urls).
     Consulta o pagamento (se houver payment_id) e atualiza o status do pedido.
     """
-    status_qs = (request.GET.get("status") or "").lower()
     payment_id = request.GET.get("payment_id") or request.GET.get("collection_id")
     preference_id = request.GET.get("preference_id")
     ext_ref = request.GET.get("external_reference") or ""
@@ -337,18 +323,15 @@ def mp_return(request):
             data = res.get("response", {}) or {}
             mp_status = (data.get("status") or "").lower()
             if mp_status == "approved":
-                order.mark_paid()  # envia e-mail de pago via models
+                order.mark_paid()
             elif mp_status in {"rejected", "cancelled", "canceled"}:
                 order.mark_cancelled()
-            else:
-                pass
     except Exception:
         pass
 
     if order.status == "paid":
         return redirect("payment_success", order_id=order.id)
     return redirect("payment_pending", order_id=order.id)
-
 
 # -------------------- Pedido / Páginas principais --------------------
 def get_or_reuse_pending_order(product: Product, customer: Customer, payment_type: str):
@@ -382,7 +365,6 @@ def get_or_reuse_pending_order(product: Product, customer: Customer, payment_typ
         )
     return order, True
 
-
 def home(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
 
@@ -412,15 +394,12 @@ def home(request):
         "kpi_pedidos_30d": pedidos_30d,
         "kpi_ticket_30d": ticket_30d,
     }
-    return render(request, "vendas/home.html", ctx)  # ou o template do painel
-
+    return render(request, "vendas/home.html", ctx)
 
 def checkout_view(request, slug, token):
     """
     Recebe dados do cliente e, conforme o botão clicado (Pix/Cartão),
-    inicia/continua o pagamento no mesmo pedido pendente:
-      - Pix    -> /pagamento/pendente/<order_id>
-      - Cartão -> /pagar/cartao/<order_id> (Checkout Pro)
+    inicia/continua o pagamento no mesmo pedido pendente.
     """
     product = get_object_or_404(Product, slug=slug, checkout_token=token, active=True)
 
@@ -457,7 +436,7 @@ def checkout_view(request, slug, token):
             order, created = get_or_reuse_pending_order(product, customer, payment_type)
             _ensure_external_ref(order)
 
-            # >>> E-MAIL: pedido criado (apenas quando criado agora)
+            # e-mail: pedido criado (só quando criado agora)
             if created:
                 try:
                     send_order_created_email(order, request=request)
@@ -465,7 +444,6 @@ def checkout_view(request, slug, token):
                     logger.warning("Falha ao enviar e-mail de pedido criado (order %s): %s", order.id, e)
 
             if payment_type == "card":
-                # agora usamos Checkout Pro
                 return redirect("pay_card", order_id=order.id)
 
             # Pix: cria pagamento apenas se ainda não existir payment_id
@@ -484,11 +462,9 @@ def checkout_view(request, slug, token):
 
     return render(request, "vendas/checkout.html", {"product": product, "form": form})
 
-
 def payment_pending(request, order_id):
     """
     Garante QR/código Pix para o MESMO pedido (sem criar novo pedido).
-    Nunca cria outro Order — só completa dados do pagamento do order atual.
     """
     order = get_object_or_404(Order.objects.select_related("product", "customer"), pk=order_id)
 
@@ -518,7 +494,6 @@ def payment_pending(request, order_id):
     order.refresh_from_db(fields=["status", "payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return render(request, "vendas/pending.html", {"order": order})
 
-
 def payment_success(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.status != "paid":
@@ -527,66 +502,84 @@ def payment_success(request, order_id):
         DownloadLink.create_for_order(order)
     return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
 
-
-# -------------------- DOWNLOAD SEGURO (R2 / S3) --------------------
-def _r2_client():
-    """
-    Cliente S3 apontando para o endpoint da R2.
-    Requer as envs definidas no settings (R2_* -> AWS_*).
-    """
-    return boto3.client(
-        "s3",
-        endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
-        aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", None),
-        aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", None),
-        region_name=getattr(settings, "AWS_S3_REGION_NAME", "auto"),
-        config=Config(signature_version=getattr(settings, "AWS_S3_SIGNATURE_VERSION", "s3v4")),
-    )
-
-
+# -------------------- DOWNLOAD SEGURO (Cloudinary) --------------------
 def secure_download(request, token):
+    """
+    Gera uma URL Cloudinary assinada e com expiração curta para o arquivo digital.
+    Suporta 'raw/private' (preferido) e 'raw/image authenticated' como fallback.
+    """
     link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
 
-    f = link.order.product.digital_file
-    if not f:
+    asset = link.order.product.digital_file
+    if not asset:
         raise Http404("Arquivo indisponível.")
 
-    filename = os.path.basename(f.name or "")
+    public_id = getattr(asset, "public_id", None) or str(asset) or ""
+    name = getattr(asset, "name", "") or public_id
+    file_format = None
+    base = os.path.basename(name)
+    if "." in base:
+        file_format = base.rsplit(".", 1)[-1].lower()
 
-    # Fallback local (dev sem R2)
-    if not getattr(settings, "AWS_S3_ENDPOINT_URL", None) or \
-       not getattr(settings, "AWS_STORAGE_BUCKET_NAME", None) or \
-       not getattr(settings, "AWS_ACCESS_KEY_ID", None):
-        try:
-            return FileResponse(f.open("rb"), as_attachment=True, filename=filename)
-        except Exception:
-            raise Http404("Arquivo local não encontrado.")
+    expires_at = int((timezone.now() + timedelta(minutes=3)).timestamp())
 
-    # R2
-    client = _r2_client()
-    # Checa existência para evitar NoSuchKey depois do redirect
+    # 1) raw + private -> private_download_url (recomendado)
     try:
-        client.head_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=f.name)
-    except Exception:
-        # arquivo não está no bucket (provavelmente nunca foi enviado)
-        raise Http404("Arquivo não encontrado no bucket. Reenvie o arquivo digital deste produto.")
+        fmt = file_format or "pdf"
+        url = private_download_url(
+            public_id,
+            fmt,
+            resource_type="raw",
+            type="private",
+            expires_at=expires_at,
+            attachment=True,
+        )
+        if url:
+            link.download_count += 1
+            link.save(update_fields=["download_count"])
+            return HttpResponseRedirect(url)
+    except Exception as e:
+        logger.debug("private_download_url (raw/private) falhou: %s", e)
 
-    url = client.generate_presigned_url(
-        "get_object",
-        Params={
-            "Bucket": settings.AWS_STORAGE_BUCKET_NAME,
-            "Key": f.name,
-            "ResponseContentDisposition": f'attachment; filename="{filename}"',
-        },
-        ExpiresIn=120,
-    )
+    # 2) raw + authenticated -> URL assinada
+    try:
+        url, _ = cloudinary_url(
+            public_id,
+            resource_type="raw",
+            type="authenticated",
+            format=file_format,
+            sign_url=True,
+            expires_at=expires_at,
+            attachment=True,
+        )
+        if url:
+            link.download_count += 1
+            link.save(update_fields=["download_count"])
+            return HttpResponseRedirect(url)
+    except Exception as e:
+        logger.debug("cloudinary_url (raw/authenticated) falhou: %s", e)
 
-    link.download_count += 1
-    link.save(update_fields=["download_count"])
-    return HttpResponseRedirect(url)
+    # 3) image + authenticated (se por acaso o arquivo foi salvo como image)
+    try:
+        url, _ = cloudinary_url(
+            public_id,
+            resource_type="image",
+            type="authenticated",
+            format=file_format,
+            sign_url=True,
+            expires_at=expires_at,
+            attachment=True,
+        )
+        if url:
+            link.download_count += 1
+            link.save(update_fields=["download_count"])
+            return HttpResponseRedirect(url)
+    except Exception as e:
+        logger.debug("cloudinary_url (image/authenticated) falhou: %s", e)
 
+    raise Http404("Não foi possível gerar o link de download no Cloudinary.")
 
 # -------------------- Relatório --------------------
 @staff_member_required
@@ -613,7 +606,6 @@ def sales_report(request):
 
     return render(request, "vendas/report.html", {"agg": agg, "top": top, "start": start, "end": end})
 
-
 # -------------------- Status / Polling / Webhook --------------------
 def sync_payment_status_from_mp(order: Order):
     if order.status != "pending" or not order.payment_id:
@@ -623,11 +615,10 @@ def sync_payment_status_from_mp(order: Order):
     data = result.get("response", {}) or {}
     status = (data.get("status") or "").lower()
     if status == "approved":
-        order.mark_paid()  # e-mail de pago via models
+        order.mark_paid()
     elif status in {"rejected", "cancelled", "canceled"}:
         order.mark_cancelled()
     return order.status
-
 
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
@@ -636,7 +627,6 @@ def order_status(request, order_id):
     else:
         sync_payment_status_from_mp(order)
     return JsonResponse({"status": order.status})
-
 
 @csrf_exempt
 def mp_webhook(request):
@@ -687,12 +677,11 @@ def mp_webhook(request):
     else:
         status = (data.get("status") or "").lower()
         if status == "approved":
-            order.mark_paid()  # e-mail de pago via models
+            order.mark_paid()
         elif status in {"rejected", "cancelled", "canceled"}:
             order.mark_cancelled()
 
     return HttpResponse("ok", status=200)
-
 
 # -------------------- Catálogo público --------------------
 def catalog(request):
@@ -721,7 +710,6 @@ def catalog(request):
         "kpi_ticket_30d": ticket_30d,
     }
     return render(request, "vendas/home_public.html", ctx)
-
 
 # -------------------- Lista de pedidos (admin simplificado) --------------------
 @staff_member_required
@@ -789,7 +777,6 @@ def orders_list(request):
         "ticket_medio": ticket_medio,
     }
     return render(request, "vendas/orders_list.html", ctx)
-
 
 @staff_member_required
 @require_POST

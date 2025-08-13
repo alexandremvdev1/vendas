@@ -9,6 +9,18 @@ from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
 
+# ---------------------------------------
+# Storages do Cloudinary (com fallback local)
+# ---------------------------------------
+try:
+    # Requer: cloudinary>=1.41 e django-cloudinary-storage>=0.3.0
+    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+    IMAGE_STORAGE_KW = {"storage": MediaCloudinaryStorage()}
+    RAW_STORAGE_KW = {"storage": RawMediaCloudinaryStorage()}
+except Exception:
+    # Se não estiver instalado/configurado, usa o disco local (MEDIA_ROOT)
+    IMAGE_STORAGE_KW = {}
+    RAW_STORAGE_KW = {}
 
 # ---------------------------------------
 # Credenciais do gateway (opcional, recomendado)
@@ -90,19 +102,22 @@ class Product(models.Model):
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # Com DEFAULT_FILE_STORAGE=S3 (R2), estes campos salvam direto no bucket
+    # Imagem (vai para Cloudinary quando os storages estiverem ativos)
     image = models.ImageField(
         "Imagem",
         upload_to="produtos/imagens/",
         blank=True, null=True,
+        **IMAGE_STORAGE_KW,
     )
 
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
+    # Arquivo digital (PDF/ZIP etc.) como resource_type=raw no Cloudinary
     digital_file = models.FileField(
         "Arquivo digital",
         upload_to="produtos/arquivos/",
         blank=True, null=True,
+        **RAW_STORAGE_KW,
     )
 
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
