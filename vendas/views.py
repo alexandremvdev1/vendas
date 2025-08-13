@@ -503,11 +503,107 @@ def payment_success(request, order_id):
     return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
 
 # -------------------- DOWNLOAD SEGURO (Cloudinary) --------------------
+# vendas/views.py (substitua apenas o secure_download e helpers)
+
+import os
+import logging
+from datetime import timedelta
+from django.http import Http404, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from cloudinary.utils import private_download_url, cloudinary_url
+from .models import DownloadLink
+
+logger = logging.getLogger(__name__)
+
+def _guess_candidates(asset):
+    """
+    Gera candidatos de public_id/format/resource_type/type.
+    Cobre prefixo 'media/' (django-cloudinary-storage) e extensão no nome.
+    """
+    public_id_attr = getattr(asset, "public_id", "") or ""
+    name = getattr(asset, "name", "") or public_id_attr or str(asset) or ""
+
+    # extrai extensão do nome do arquivo (se houver)
+    base = os.path.basename(name)
+    ext = base.rsplit(".", 1)[-1].lower() if "." in base else None
+
+    # candidatos de public_id
+    bases = {p for p in [public_id_attr, name] if p}
+    pubs = []
+    for pid in bases:
+        # original
+        pubs.append(pid)
+        # sem 'media/'
+        if pid.startswith("media/"):
+            pubs.append(pid.split("media/", 1)[-1])
+        else:
+            # com 'media/'
+            pubs.append(f"media/{pid}")
+        # sem extensão
+        if "." in pid:
+            pubs.append(pid.rsplit(".", 1)[0])
+
+    # dedup
+    seen = set()
+    public_ids = []
+    for p in pubs:
+        if p and p not in seen:
+            seen.add(p)
+            public_ids.append(p)
+
+    # tipos possíveis
+    resource_types = ["raw", "image"]
+    delivery_types = ["upload", "private", "authenticated"]
+    formats = [ext, None]  # tenta com a extensão e sem
+
+    return public_ids, formats, resource_types, delivery_types
+
+
+def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
+    """
+    Tenta 1) private_download_url (preferível p/ private/raw)
+          2) cloudinary_url assinado
+    """
+    # 1) private_download_url
+    try:
+        # Para 'raw', o Cloudinary geralmente espera o public_id SEM extensão
+        # e o 'format' separado. Se não houver formato, pule esse método.
+        if resource_type == "raw" and not file_format:
+            raise ValueError("raw sem format -> pula private_download_url")
+        url = private_download_url(
+            public_id,
+            file_format or "",
+            resource_type=resource_type,
+            type=delivery_type,
+            expires_at=expires_at,
+            attachment=True,
+        )
+        if url:
+            return url
+    except Exception as e:
+        logger.debug("private_download_url falhou (%s/%s/%s.%s): %s",
+                     resource_type, delivery_type, public_id, file_format or "", e)
+
+    # 2) cloudinary_url assinado
+    try:
+        url, _ = cloudinary_url(
+            public_id,
+            resource_type=resource_type,
+            type=delivery_type,
+            format=file_format,          # ok ser None
+            sign_url=True,
+            expires_at=expires_at,
+            attachment=True,
+        )
+        return url
+    except Exception as e:
+        logger.debug("cloudinary_url falhou (%s/%s/%s.%s): %s",
+                     resource_type, delivery_type, public_id, file_format or "", e)
+        return None
+
+
 def secure_download(request, token):
-    """
-    Gera uma URL Cloudinary assinada e com expiração curta para o arquivo digital.
-    Suporta 'raw/private' (preferido) e 'raw/image authenticated' como fallback.
-    """
     link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
@@ -516,70 +612,23 @@ def secure_download(request, token):
     if not asset:
         raise Http404("Arquivo indisponível.")
 
-    public_id = getattr(asset, "public_id", None) or str(asset) or ""
-    name = getattr(asset, "name", "") or public_id
-    file_format = None
-    base = os.path.basename(name)
-    if "." in base:
-        file_format = base.rsplit(".", 1)[-1].lower()
-
+    public_ids, fmts, rtypes, dtypes = _guess_candidates(asset)
     expires_at = int((timezone.now() + timedelta(minutes=3)).timestamp())
 
-    # 1) raw + private -> private_download_url (recomendado)
-    try:
-        fmt = file_format or "pdf"
-        url = private_download_url(
-            public_id,
-            fmt,
-            resource_type="raw",
-            type="private",
-            expires_at=expires_at,
-            attachment=True,
-        )
-        if url:
-            link.download_count += 1
-            link.save(update_fields=["download_count"])
-            return HttpResponseRedirect(url)
-    except Exception as e:
-        logger.debug("private_download_url (raw/private) falhou: %s", e)
+    # tenta várias combinações até achar uma válida
+    for pid in public_ids:
+        for rt in rtypes:
+            for dt in dtypes:
+                for fmt in fmts:
+                    url = _sign_url(pid, fmt, rt, dt, expires_at)
+                    if url:
+                        link.download_count += 1
+                        link.save(update_fields=["download_count"])
+                        return HttpResponseRedirect(url)
 
-    # 2) raw + authenticated -> URL assinada
-    try:
-        url, _ = cloudinary_url(
-            public_id,
-            resource_type="raw",
-            type="authenticated",
-            format=file_format,
-            sign_url=True,
-            expires_at=expires_at,
-            attachment=True,
-        )
-        if url:
-            link.download_count += 1
-            link.save(update_fields=["download_count"])
-            return HttpResponseRedirect(url)
-    except Exception as e:
-        logger.debug("cloudinary_url (raw/authenticated) falhou: %s", e)
+    logger.error("Cloudinary: resource not found. Tentativas: ids=%s", public_ids)
+    raise Http404("Arquivo não encontrado no Cloudinary. Reenvie o arquivo no admin (RawMediaCloudinaryStorage).")
 
-    # 3) image + authenticated (se por acaso o arquivo foi salvo como image)
-    try:
-        url, _ = cloudinary_url(
-            public_id,
-            resource_type="image",
-            type="authenticated",
-            format=file_format,
-            sign_url=True,
-            expires_at=expires_at,
-            attachment=True,
-        )
-        if url:
-            link.download_count += 1
-            link.save(update_fields=["download_count"])
-            return HttpResponseRedirect(url)
-    except Exception as e:
-        logger.debug("cloudinary_url (image/authenticated) falhou: %s", e)
-
-    raise Http404("Não foi possível gerar o link de download no Cloudinary.")
 
 # -------------------- Relatório --------------------
 @staff_member_required
