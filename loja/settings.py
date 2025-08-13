@@ -2,12 +2,10 @@
 from pathlib import Path
 import os
 import dj_database_url  # pip install dj-database-url psycopg2-binary
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ---------------- Core ----------------
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-fallback-key')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
@@ -27,42 +25,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'vendas',
+
+    # Storage S3-compatível (Cloudflare R2)
+    'storages',
 ]
-
-# ---------------------------------------------------------------------
-# Cloudinary – ativa só quando houver credenciais (evita crash)
-# ---------------------------------------------------------------------
-CLOUDINARY_READY = bool(
-    os.getenv('CLOUDINARY_URL') or
-    (os.getenv('CLOUDINARY_CLOUD_NAME') and os.getenv('CLOUDINARY_API_KEY') and os.getenv('CLOUDINARY_API_SECRET'))
-)
-
-if CLOUDINARY_READY:
-    # Config do SDK (necessária p/ CloudinaryField gerar URLs)
-    if os.getenv('CLOUDINARY_URL'):
-        cloudinary.config(secure=True)  # CLOUDINARY_URL já contém as chaves
-    else:
-        cloudinary.config(
-            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', ''),
-            api_key=os.getenv('CLOUDINARY_API_KEY', ''),
-            api_secret=os.getenv('CLOUDINARY_API_SECRET', ''),
-            secure=True,
-        )
-
-    # Apps do Cloudinary
-    INSTALLED_APPS += ['cloudinary', 'cloudinary_storage']
-
-    # Requisitos do cloudinary_storage
-    CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME', ''),
-        'API_KEY': os.getenv('CLOUDINARY_API_KEY', ''),
-        'API_SECRET': os.getenv('CLOUDINARY_API_SECRET', ''),
-        'SECURE': True,
-    }
-
-    # Ative se quiser que FileField/ImageField usem Cloudinary por padrão.
-    # (Se você só usa CloudinaryField, pode comentar esta linha.)
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- Middleware ----------------
 MIDDLEWARE = [
@@ -113,13 +79,39 @@ TIME_ZONE = 'America/Araguaina'
 USE_I18N = True
 USE_TZ = True
 
-# ---------------- Static & Media ----------------
+# ---------------- Static ----------------
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-MEDIA_URL = '/media/'
+# ---------------- Media (Cloudflare R2 via S3) ----------------
+MEDIA_URL = '/media/'      # mantido p/ compat; S3 gera as URLs
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Ativa R2 só quando as envs existirem (dev sem envs usa disco)
+R2_READY = all([
+    os.getenv('R2_ACCOUNT_ID'),
+    os.getenv('R2_BUCKET'),
+    os.getenv('R2_KEY_ID'),
+    os.getenv('R2_SECRET'),
+])
+
+if R2_READY:
+    AWS_ACCESS_KEY_ID = os.getenv("R2_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.getenv("R2_SECRET")
+    AWS_STORAGE_BUCKET_NAME = os.getenv("R2_BUCKET")  # ex: "vendas"
+    AWS_S3_ENDPOINT_URL = f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
+    AWS_S3_REGION_NAME = "auto"
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+    # privados por padrão; usaremos URL assinada
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = True
+    AWS_S3_FILE_OVERWRITE = False
+    # R2 funciona melhor com addressing style "path" em vários cenários
+    AWS_S3_ADDRESSING_STYLE = "path"
+
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
 # ---------------- Auth ----------------
 LOGIN_URL = 'login'
@@ -156,20 +148,8 @@ LOGGING = {
         "vendas.views": {"handlers": ["console"], "level": "INFO"},
         "mercadopago": {"handlers": ["console"], "level": "WARNING"},
         "django.request": {"handlers": ["console"], "level": "WARNING"},
-        "cloudinary": {"handlers": ["console"], "level": "INFO"},
     },
 }
-
-# --------- E-mail ---------
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@example.com")
-SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 # --------- Site base ---------
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "http://localhost:8000")

@@ -1,6 +1,5 @@
 # vendas/models.py
 import uuid
-import re
 from datetime import timedelta
 
 from django.db import models
@@ -9,6 +8,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
+
 
 # ---------------------------------------
 # Credenciais do gateway (opcional, recomendado)
@@ -65,18 +65,6 @@ def default_order_expiry():
 
 
 # ---------------------------------------
-# Config condicional de storage para CloudinaryStorage
-# (só importa se o app estiver ativo nas INSTALLED_APPS)
-# ---------------------------------------
-IMAGE_STORAGE_KW = {}
-RAW_STORAGE_KW = {}
-if "cloudinary_storage" in settings.INSTALLED_APPS:
-    # Importa só quando habilitado no settings (com credenciais)
-    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
-    IMAGE_STORAGE_KW = {"storage": MediaCloudinaryStorage()}
-    RAW_STORAGE_KW = {"storage": RawMediaCloudinaryStorage()}
-
-# ---------------------------------------
 # Cliente
 # ---------------------------------------
 class Customer(models.Model):
@@ -102,22 +90,19 @@ class Product(models.Model):
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # Imagem (CloudinaryStorage quando habilitado; senão disco)
+    # Com DEFAULT_FILE_STORAGE=S3 (R2), estes campos salvam direto no bucket
     image = models.ImageField(
         "Imagem",
         upload_to="produtos/imagens/",
         blank=True, null=True,
-        **IMAGE_STORAGE_KW,
     )
 
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
-    # Arquivo digital (raw no CloudinaryStorage quando habilitado; senão disco)
     digital_file = models.FileField(
         "Arquivo digital",
         upload_to="produtos/arquivos/",
         blank=True, null=True,
-        **RAW_STORAGE_KW,
     )
 
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
@@ -141,7 +126,7 @@ class Product(models.Model):
 
 
 # ---------------------------------------
-# Pedido (Pix + Cartão) - UMA ÚNICA CLASSE
+# Pedido (Pix + Cartão)
 # ---------------------------------------
 class Order(models.Model):
     STATUS = [
@@ -208,14 +193,14 @@ class Order(models.Model):
         if self.status != "paid":
             self.status = "paid"
             self.save(update_fields=["status"])
-        # garante o DownloadLink (maneira correta)
+        # garante o DownloadLink (idempotente)
         try:
             _ = self.download_link
         except DownloadLink.DoesNotExist:
             DownloadLink.create_for_order(self)
-        # envia o e-mail de pagamento confirmado
+        # envia o e-mail (não bloqueia fluxo se falhar)
         try:
-            from .emails import send_order_paid_email  # import local p/ evitar circular
+            from .emails import send_order_paid_email
             send_order_paid_email(self)
         except Exception:
             pass
