@@ -1,61 +1,62 @@
 # loja/settings.py
 from pathlib import Path
 import os
-import dj_database_url  # pip install dj-database-url psycopg2-binary
+import dj_database_url          # pip install dj-database-url psycopg2-binary
+from dotenv import load_dotenv  # pip install python-dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")  # carrega variáveis do .env (apenas local)
 
 # ---------------- Core ----------------
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-fallback-key')
-DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-fallback-key")
+DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
 
 ALLOWED_HOSTS = [
-    *[h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h],
-    '127.0.0.1', 'localhost',
-    'vendas-ozvo.onrender.com',
+    *[h for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h],
+    "127.0.0.1", "localhost", "vendas-ozvo.onrender.com",
 ]
 
 # ---------------- Apps ----------------
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
 
-    'vendas',
+    "vendas",
 
     # Storage S3-compatível (Cloudflare R2)
-    'storages',   # pip install django-storages boto3
+    "storages",                 # pip install django-storages boto3
 ]
 
 # ---------------- Middleware ----------------
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'loja.urls'
+ROOT_URLCONF = "loja.urls"
 
 TEMPLATES = [{
-    'BACKEND': 'django.template.backends.django.DjangoTemplates',
-    'DIRS': [],
-    'APP_DIRS': True,
-    'OPTIONS': {'context_processors': [
-        'django.template.context_processors.request',
-        'django.contrib.auth.context_processors.auth',
-        'django.contrib.messages.context_processors.messages',
+    "BACKEND": "django.template.backends.django.DjangoTemplates",
+    "DIRS": [],
+    "APP_DIRS": True,
+    "OPTIONS": {"context_processors": [
+        "django.template.context_processors.request",
+        "django.contrib.auth.context_processors.auth",
+        "django.contrib.messages.context_processors.messages",
     ]},
 }]
 
-WSGI_APPLICATION = 'loja.wsgi.application'
+WSGI_APPLICATION = "loja.wsgi.application"
 
 # ---------------- Banco de dados ----------------
 DEFAULT_SQLITE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
@@ -74,27 +75,25 @@ DATABASES = {
 }
 
 # ---------------- i18n ----------------
-LANGUAGE_CODE = 'pt-br'
-TIME_ZONE = 'America/Araguaina'
+LANGUAGE_CODE = "pt-br"
+TIME_ZONE = "America/Araguaina"
 USE_I18N = True
 USE_TZ = True
 
 # ---------------- Static ----------------
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # ---------------- Media (Cloudflare R2 via S3) ----------------
-# Estes valores ainda são usados como fallback local em dev
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = "/media/"               # apenas fallback/local
+MEDIA_ROOT = BASE_DIR / "media"
 
-# Ativa R2 só quando as envs existirem (dev sem envs usa disco)
 R2_READY = all([
-    os.getenv('R2_ACCOUNT_ID'),
-    os.getenv('R2_BUCKET'),
-    os.getenv('R2_KEY_ID'),
-    os.getenv('R2_SECRET'),
+    os.getenv("R2_ACCOUNT_ID"),
+    os.getenv("R2_BUCKET"),
+    os.getenv("R2_KEY_ID"),
+    os.getenv("R2_SECRET"),
 ])
 
 if R2_READY:
@@ -104,40 +103,39 @@ if R2_READY:
     AWS_S3_ENDPOINT_URL      = f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
     AWS_S3_REGION_NAME       = "auto"
     AWS_S3_SIGNATURE_VERSION = "s3v4"
-    AWS_S3_ADDRESSING_STYLE  = "path"      # importante na R2
+    AWS_S3_ADDRESSING_STYLE  = "path"      # importante para R2
 
-    # Não sobrescrever, usar URLs assinadas, objetos privados por padrão
     AWS_S3_FILE_OVERWRITE    = False
-    AWS_QUERYSTRING_AUTH     = True
-    AWS_QUERYSTRING_EXPIRE   = 3600  # 1 hora
     AWS_DEFAULT_ACL          = None
+    AWS_QUERYSTRING_AUTH     = True
+    AWS_QUERYSTRING_EXPIRE   = 3600  # 1 hora (ajuste se quiser menos)
 
-    # (Opcional) Cache do lado do cliente/CDN
     AWS_S3_OBJECT_PARAMETERS = {
         "CacheControl": "max-age=86400",  # 24h
     }
 
+    # Faz todos os FileField/ImageField salvarem no R2
     DEFAULT_FILE_STORAGE     = "storages.backends.s3boto3.S3Boto3Storage"
 
 # ---------------- Auth ----------------
-LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'home'
-LOGOUT_REDIRECT_URL = 'login'
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "login"
 
 # ---------------- HTTPS/Proxy/CSRF ----------------
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'false').lower() == 'true'
-SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'false').lower() == 'true'
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "false").lower() == "true"
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "false").lower() == "true"
 
 CSRF_TRUSTED_ORIGINS = [
-    *[o for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o],
-    'http://127.0.0.1:8000',
-    'http://localhost:8000',
-    'https://vendas-ozvo.onrender.com',
+    *[o for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o],
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://vendas-ozvo.onrender.com",
 ]
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --------- Mercado Pago ---------
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "")
