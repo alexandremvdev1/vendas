@@ -396,6 +396,7 @@ def home(request):
     }
     return render(request, "vendas/home.html", ctx)
 
+# --- checkout_view: grava amount com o preço vigente e segue o fluxo normal ---
 def checkout_view(request, slug, token):
     """
     Recebe dados do cliente e, conforme o botão clicado (Pix/Cartão),
@@ -408,7 +409,6 @@ def checkout_view(request, slug, token):
         if form.is_valid():
             data = form.cleaned_data
 
-            # encontra ou cria cliente pelo CPF
             customer, _ = Customer.objects.get_or_create(
                 cpf=data["cpf"],
                 defaults={
@@ -417,7 +417,6 @@ def checkout_view(request, slug, token):
                     "phone": data.get("phone", ""),
                 },
             )
-            # atualiza dados se mudaram
             changed = False
             if customer.full_name != data["full_name"]:
                 customer.full_name = data["full_name"]; changed = True
@@ -428,15 +427,22 @@ def checkout_view(request, slug, token):
             if changed:
                 customer.save()
 
-            # método escolhido
             pay_method = request.POST.get("pay_method", "pix")
             payment_type = "card" if pay_method == "card" else "pix"
 
-            # Reusa pedido pendente se já houver (idempotente)
+            # preço vigente no momento do checkout (considera promoção)
+            unit_price = _effective_price(product)
+
+            # Reusa pedido pendente se já houver, senão cria novo
             order, created = get_or_reuse_pending_order(product, customer, payment_type)
+
+            # garanta que o valor do pedido reflita o preço vigente
+            if order.amount != unit_price:
+                order.amount = unit_price
+                order.save(update_fields=["amount"])
+
             _ensure_external_ref(order)
 
-            # e-mail: pedido criado (só quando criado agora)
             if created:
                 try:
                     send_order_created_email(order, request=request)
@@ -446,7 +452,7 @@ def checkout_view(request, slug, token):
             if payment_type == "card":
                 return redirect("pay_card", order_id=order.id)
 
-            # Pix: cria pagamento apenas se ainda não existir payment_id
+            # Pix
             try:
                 create_pix_payment(product, customer, order, request)
             except Exception as e:
@@ -461,6 +467,97 @@ def checkout_view(request, slug, token):
         form = CheckoutForm()
 
     return render(request, "vendas/checkout.html", {"product": product, "form": form})
+
+# --- helper: preço vigente do produto (promo se ativa) ---
+def _effective_price(product):
+    # tenta vários nomes de campos para maior robustez
+    promo_price = getattr(product, "promo_price", None) \
+                  or getattr(product, "promotional_price", None) \
+                  or getattr(product, "price_promo", None)
+    promo_flag = getattr(product, "is_promo", None)
+    if promo_flag is None:
+        promo_flag = getattr(product, "is_on_promo", None)
+    if promo_flag is None:
+        promo_flag = getattr(product, "promo_active", None)
+
+    # se houver preço promo e (não existe flag ou a flag está True), usa promo
+    if promo_price and (promo_flag is None or bool(promo_flag) is True):
+        return promo_price
+    return product.price
+
+# --- Checkout Pro: também usar order.amount ---
+def create_card_preference(product, customer, order, request):
+    _ensure_external_ref(order)
+    sdk = mp_sdk()
+
+    return_base = request.build_absolute_uri(reverse("mp_return"))
+    success_url = return_base
+    pending_url = return_base
+    failure_url = return_base
+
+    notification_url = build_mp_notification_url(request)
+
+    payer = {
+        "name": (customer.full_name.split(" ")[0] or customer.full_name),
+        "surname": " ".join(customer.full_name.split(" ")[1:]) or customer.full_name,
+        "email": customer.email or "",
+        "phone": {"number": re.sub(r"\D", "", customer.phone or "")[:15]},
+        "identification": {"type": "CPF", "number": re.sub(r"\D", "", customer.cpf or "")[:14]},
+    }
+
+    pref_body = {
+        "items": [{
+            "title": product.title,
+            "quantity": 1,
+            "currency_id": "BRL",
+            "unit_price": float(order.amount),  # <<< valor do pedido
+            "description": f"Pedido {order.external_ref}"
+        }],
+        "payer": payer,
+        "external_reference": order.external_ref,
+        "back_urls": {"success": success_url, "pending": pending_url, "failure": failure_url},
+        "auto_return": "approved",
+        "expires": True,
+        "expiration_date_to": order.expires_at.isoformat(),
+        "payment_methods": {
+            "excluded_payment_types": [
+                {"id": "ticket"}, {"id": "atm"}, {"id": "bank_transfer"},
+                {"id": "debit_card"}, {"id": "prepaid_card"}
+            ],
+        },
+        "statement_descriptor": "LOJA DIGITAL",
+    }
+    if notification_url:
+        pref_body["notification_url"] = notification_url
+
+    if order.preference_id:
+        try:
+            res = sdk.preference().get(order.preference_id)
+            resp = res.get("response", {}) or {}
+            url = resp.get("init_point") or resp.get("sandbox_init_point")
+            if url:
+                return url
+        except Exception:
+            pass
+
+    res = sdk.preference().create(pref_body)
+    status_code = res.get("status")
+    resp = res.get("response", {}) or {}
+    logger.info("MP preference.create status=%s order=%s resp=%s",
+                status_code, order.id, json.dumps(resp, ensure_ascii=False)[:1500])
+
+    if status_code not in (200, 201):
+        msg = resp.get("message") or resp.get("error") or "erro_desconhecido"
+        raise RuntimeError(f"MP preference error {status_code}: {msg}")
+
+    order.preference_id = str(resp.get("id") or "")
+    order.save(update_fields=["preference_id"])
+
+    url = resp.get("init_point") or resp.get("sandbox_init_point")
+    if not url:
+        raise RuntimeError("Preference criada, mas init_point está vazio.")
+    return url
+
 
 def payment_pending(request, order_id):
     """

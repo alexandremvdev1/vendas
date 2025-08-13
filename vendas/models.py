@@ -96,13 +96,15 @@ class Customer(models.Model):
 # ---------------------------------------
 # Produto
 # ---------------------------------------
+from urllib.parse import urlparse, parse_qs  # ⬅️ adicione este import
+
 class Product(models.Model):
     title = models.CharField("Título", max_length=160)
     slug = models.SlugField(unique=True, max_length=180, editable=False)
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # Imagem (vai para Cloudinary quando os storages estiverem ativos)
+    # Imagem (Cloudinary quando ativo)
     image = models.ImageField(
         "Imagem",
         upload_to="produtos/imagens/",
@@ -112,7 +114,7 @@ class Product(models.Model):
 
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
-    # Arquivo digital (PDF/ZIP etc.) como resource_type=raw no Cloudinary
+    # Arquivo digital (Cloudinary raw)
     digital_file = models.FileField(
         "Arquivo digital",
         upload_to="produtos/arquivos/",
@@ -120,7 +122,15 @@ class Product(models.Model):
         **RAW_STORAGE_KW,
     )
 
+    # Preço
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
+
+    # ✔️ Promoção
+    promo_active = models.BooleanField("Promoção ativa?", default=False)
+    promo_price = models.DecimalField(
+        "Preço promocional (R$)", max_digits=10, decimal_places=2, blank=True, null=True
+    )
+
     active = models.BooleanField("Ativo", default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -139,6 +149,41 @@ class Product(models.Model):
     def __str__(self):
         return self.title
 
+    @property
+    def has_promo(self) -> bool:
+        """
+        True se a promoção estiver ativa e o preço promocional válido e menor que o normal.
+        """
+        return bool(self.promo_active and self.promo_price and self.promo_price < self.price)
+
+    @property
+    def price_to_charge(self):
+        """
+        Preço efetivo a cobrar (considerando promoção).
+        """
+        return self.promo_price if self.has_promo else self.price
+
+    @property
+    def video_embed_url(self):
+        """
+        (opcional) gera URL de embed p/ YouTube/Vimeo a partir de video_url normal.
+        """
+        url = (self.video_url or "").strip()
+        if not url:
+            return ""
+        if "youtube.com/watch" in url or "youtu.be/" in url:
+            import re
+            vid = None
+            if "watch?v=" in url:
+                vid = url.split("watch?v=", 1)[-1].split("&", 1)[0]
+            else:
+                m = re.search(r"youtu\.be/([^?&/]+)", url)
+                vid = m.group(1) if m else None
+            return f"https://www.youtube.com/embed/{vid}" if vid else url
+        if "vimeo.com/" in url:
+            vid = url.rstrip("/").split("/")[-1]
+            return f"https://player.vimeo.com/video/{vid}"
+        return url
 
 # ---------------------------------------
 # Pedido (Pix + Cartão)
