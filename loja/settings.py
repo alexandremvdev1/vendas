@@ -27,12 +27,42 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'vendas',
-
-    # Cloudinary (igual ao acampamentos)
-    'cloudinary',
-    'cloudinary_storage',
-    # 'storages',  # opcional; só se for usar S3/Outros
 ]
+
+# ---------------------------------------------------------------------
+# Cloudinary – ativa só quando houver credenciais (evita crash)
+# ---------------------------------------------------------------------
+CLOUDINARY_READY = bool(
+    os.getenv('CLOUDINARY_URL') or
+    (os.getenv('CLOUDINARY_CLOUD_NAME') and os.getenv('CLOUDINARY_API_KEY') and os.getenv('CLOUDINARY_API_SECRET'))
+)
+
+if CLOUDINARY_READY:
+    # Config do SDK (necessária p/ CloudinaryField gerar URLs)
+    if os.getenv('CLOUDINARY_URL'):
+        cloudinary.config(secure=True)  # CLOUDINARY_URL já contém as chaves
+    else:
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', ''),
+            api_key=os.getenv('CLOUDINARY_API_KEY', ''),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET', ''),
+            secure=True,
+        )
+
+    # Apps do Cloudinary
+    INSTALLED_APPS += ['cloudinary', 'cloudinary_storage']
+
+    # Requisitos do cloudinary_storage
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME', ''),
+        'API_KEY': os.getenv('CLOUDINARY_API_KEY', ''),
+        'API_SECRET': os.getenv('CLOUDINARY_API_SECRET', ''),
+        'SECURE': True,
+    }
+
+    # Ative se quiser que FileField/ImageField usem Cloudinary por padrão.
+    # (Se você só usa CloudinaryField, pode comentar esta linha.)
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- Middleware ----------------
 MIDDLEWARE = [
@@ -90,18 +120,6 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-
-# ---------------------------------------------------------------------
-# Cloudinary (mesmo padrão do acampamentos/settings.py)
-# ---------------------------------------------------------------------
-cloudinary.config(
-    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', ''),
-    api_key=os.getenv('CLOUDINARY_API_KEY', ''),
-    api_secret=os.getenv('CLOUDINARY_API_SECRET', ''),
-    secure=True,
-)
-# Se quiser que FileField/ImageField padrão usem Cloudinary como storage:
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- Auth ----------------
 LOGIN_URL = 'login'

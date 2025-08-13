@@ -1,3 +1,4 @@
+# vendas/models.py
 import uuid
 import re
 from datetime import timedelta
@@ -8,21 +9,6 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
-from cloudinary.models import CloudinaryField
-
-# ===== Cloudinary storages (opcional, com fallback local) =====
-# Observação: este bloco é usado APENAS se você optar por ImageField/FileField
-# com CloudinaryStorage (alternativa ao CloudinaryField). Mantido aqui para
-# compatibilidade futura, mas NÃO é utilizado no código abaixo.
-try:
-    # pip install cloudinary django-cloudinary-storage
-    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
-    MEDIA_STORAGE = MediaCloudinaryStorage()
-    RAW_STORAGE = RawMediaCloudinaryStorage()
-except Exception:
-    MEDIA_STORAGE = None
-    RAW_STORAGE = None
-
 
 # ---------------------------------------
 # Credenciais do gateway (opcional, recomendado)
@@ -52,10 +38,6 @@ class PaymentConfig(models.Model):
 
 
 def get_mp_access_token() -> str:
-    """
-    Pega o Access Token da credencial ativa (PaymentConfig) ou, em fallback, do settings.MP_ACCESS_TOKEN.
-    Cache básico por 60s.
-    """
     token = cache.get("mp_access_token")
     if token:
         return token
@@ -66,10 +48,6 @@ def get_mp_access_token() -> str:
 
 
 def get_mp_public_key() -> str:
-    """
-    Public Key usada nos Bricks/Checkout. Busca na credencial ativa, senão em settings.MP_PUBLIC_KEY.
-    Cache básico por 60s.
-    """
     pk = cache.get("mp_public_key")
     if pk:
         return pk
@@ -85,6 +63,18 @@ def get_mp_public_key() -> str:
 def default_order_expiry():
     return timezone.now() + timedelta(days=2)
 
+
+# ---------------------------------------
+# Config condicional de storage para CloudinaryStorage
+# (só importa se o app estiver ativo nas INSTALLED_APPS)
+# ---------------------------------------
+IMAGE_STORAGE_KW = {}
+RAW_STORAGE_KW = {}
+if "cloudinary_storage" in settings.INSTALLED_APPS:
+    # Importa só quando habilitado no settings (com credenciais)
+    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+    IMAGE_STORAGE_KW = {"storage": MediaCloudinaryStorage()}
+    RAW_STORAGE_KW = {"storage": RawMediaCloudinaryStorage()}
 
 # ---------------------------------------
 # Cliente
@@ -112,24 +102,22 @@ class Product(models.Model):
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # Imagem hospedada no Cloudinary (resource_type padrão: "image")
-    # Atenção: não usar argumento posicional (evita duplicar verbose_name).
-    image = CloudinaryField(
-        verbose_name="Imagem",
-        folder="produtos/imagens",
-        null=True,
-        blank=True,
+    # Imagem (CloudinaryStorage quando habilitado; senão disco)
+    image = models.ImageField(
+        "Imagem",
+        upload_to="produtos/imagens/",
+        blank=True, null=True,
+        **IMAGE_STORAGE_KW,
     )
 
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
-    # Arquivo digital (PDF/ZIP etc.) hospedado no Cloudinary como resource_type="raw"
-    digital_file = CloudinaryField(
-        verbose_name="Arquivo digital",
-        folder="produtos/arquivos",
-        resource_type="raw",
-        null=True,
-        blank=True,
+    # Arquivo digital (raw no CloudinaryStorage quando habilitado; senão disco)
+    digital_file = models.FileField(
+        "Arquivo digital",
+        upload_to="produtos/arquivos/",
+        blank=True, null=True,
+        **RAW_STORAGE_KW,
     )
 
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
@@ -220,15 +208,17 @@ class Order(models.Model):
         if self.status != "paid":
             self.status = "paid"
             self.save(update_fields=["status"])
-            if not hasattr(self, "download_link"):
-                DownloadLink.create_for_order(self)
-            # envia o e-mail de pagamento confirmado
-            try:
-                from .emails import send_order_paid_email  # import local p/ evitar circular
-                send_order_paid_email(self)
-            except Exception:
-                # não deixa o fluxo de pagamento falhar por causa de e-mail
-                pass
+        # garante o DownloadLink (maneira correta)
+        try:
+            _ = self.download_link
+        except DownloadLink.DoesNotExist:
+            DownloadLink.create_for_order(self)
+        # envia o e-mail de pagamento confirmado
+        try:
+            from .emails import send_order_paid_email  # import local p/ evitar circular
+            send_order_paid_email(self)
+        except Exception:
+            pass
 
     def mark_cancelled(self):
         if self.status != "cancelled":
