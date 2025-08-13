@@ -8,8 +8,12 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
+from cloudinary.models import CloudinaryField
 
 # ===== Cloudinary storages (opcional, com fallback local) =====
+# Observação: este bloco é usado APENAS se você optar por ImageField/FileField
+# com CloudinaryStorage (alternativa ao CloudinaryField). Mantido aqui para
+# compatibilidade futura, mas NÃO é utilizado no código abaixo.
 try:
     # pip install cloudinary django-cloudinary-storage
     from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
@@ -108,22 +112,24 @@ class Product(models.Model):
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # >>> Imagens no Cloudinary (Media) quando disponível; fallback local
-    image = models.ImageField(
-        "Imagem",
-        upload_to="produtos/imagens/",
-        blank=True,
+    # Imagem hospedada no Cloudinary (resource_type padrão: "image")
+    # Atenção: não usar argumento posicional (evita duplicar verbose_name).
+    image = CloudinaryField(
+        verbose_name="Imagem",
+        folder="produtos/imagens",
         null=True,
-        storage=MEDIA_STORAGE if MEDIA_STORAGE else None,
+        blank=True,
     )
 
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
-    # >>> Arquivos digitais (PDF/ZIP) no Cloudinary "raw" quando disponível; fallback local
-    digital_file = models.FileField(
-        "Arquivo digital",
-        upload_to="produtos/arquivos/",
-        storage=RAW_STORAGE if RAW_STORAGE else None,
+    # Arquivo digital (PDF/ZIP etc.) hospedado no Cloudinary como resource_type="raw"
+    digital_file = CloudinaryField(
+        verbose_name="Arquivo digital",
+        folder="produtos/arquivos",
+        resource_type="raw",
+        null=True,
+        blank=True,
     )
 
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
