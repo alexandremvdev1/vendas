@@ -515,50 +515,89 @@ def payment_success(request, order_id):
         DownloadLink.create_for_order(order)
     return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
 
-def secure_download(request, token):
-    link = get_object_or_404(DownloadLink, token=token)
+# vendas/views.py
+import os
+import logging
+from datetime import timedelta
 
+from django.http import Http404, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
+from cloudinary.utils import private_download_url, cloudinary_url
+
+from .models import DownloadLink
+
+
+def secure_download(request, token):
+    """
+    Entrega segura de arquivo do Cloudinary (resource_type='raw'), com URL assinada.
+    """
+    logger = logging.getLogger("vendas.views")
+
+    link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
 
-    # Recurso do produto
-    asset = link.order.product.digital_file  # CloudinaryField -> CloudinaryResource ou str
+    asset = link.order.product.digital_file  # CloudinaryField
 
-    # CASO 1: se algum dia virar FileField/Storage local, mantemos compatibilidade
-    if hasattr(asset, "open"):
-        filename = os.path.basename(getattr(asset, "name", "arquivo"))
-        link.download_count += 1
-        link.save(update_fields=["download_count"])
-        return FileResponse(asset.open("rb"), as_attachment=True, filename=filename)
-
-    # CASO 2: CloudinaryResource (caminho atual com CloudinaryField)
-    # Precisamos de public_id e do formato (extensão) — para 'raw' é obrigatório.
-    public_id = getattr(asset, "public_id", None) or str(asset)  # CloudinaryResource -> id
+    # Extrai public_id e formato
+    public_id = getattr(asset, "public_id", None) or str(asset)
     file_format = getattr(asset, "format", None)
-    if not file_format and "." in public_id:
-        file_format = public_id.rsplit(".", 1)[-1]
+
+    if not public_id:
+        logger.error("digital_file sem public_id: %r", asset)
+        raise Http404("Arquivo indisponível.")
+
+    public_id_clean = public_id
     if not file_format:
-        # último recurso (muitos PDFs/ZIPs já trazem a extensão no public_id)
+        base = os.path.basename(public_id)
+        if "." in base:
+            public_id_clean = public_id.rsplit(".", 1)[0]
+            file_format = base.rsplit(".", 1)[-1].lower()
+    if not file_format:
         file_format = "pdf"
 
-    # URL assinada e temporária (expira em ~2 minutos)
     expires_at = int((timezone.now() + timedelta(minutes=2)).timestamp())
 
-    # IMPORTANTE:
-    # - resource_type='raw' (seu arquivo é PDF/ZIP etc)
-    # - type='upload' (você não configurou como 'private'/'authenticated' no upload)
-    signed_url = private_download_url(
-        public_id,
-        file_format,
-        resource_type="raw",
-        type="upload",
-        expires_at=expires_at,
-        attachment=True,  # força download
-    )
+    # 1) URL assinada preferencial
+    signed_url = None
+    try:
+        signed_url = private_download_url(
+            public_id_clean,
+            file_format,
+            resource_type="raw",
+            type="upload",     # troque p/ "private" se fez upload como private
+            expires_at=expires_at,
+            attachment=True,
+        )
+    except Exception as e:
+        logger.exception("private_download_url falhou: %s", e)
 
+    # 2) Fallback assinado
+    if not signed_url:
+        try:
+            signed_url, _ = cloudinary_url(
+                public_id_clean,
+                resource_type="raw",
+                type="upload",
+                format=file_format,
+                sign_url=True,
+                attachment=True,
+                expires_at=expires_at,
+            )
+        except Exception as e:
+            logger.exception("cloudinary_url assinado falhou: %s", e)
+
+    if not signed_url:
+        raise Http404("Arquivo temporariamente indisponível.")
+
+    # contabiliza e redireciona
     link.download_count += 1
     link.save(update_fields=["download_count"])
+
     return HttpResponseRedirect(signed_url)
+
 
 @staff_member_required
 def sales_report(request):
