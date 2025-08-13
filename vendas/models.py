@@ -79,11 +79,14 @@ def default_order_expiry():
 # ---------------------------------------
 # Cliente
 # ---------------------------------------
+# vendas/models.py
+import re
+
 class Customer(models.Model):
     full_name = models.CharField("Nome completo", max_length=160)
     cpf = models.CharField("CPF", max_length=14, unique=True)  # salvo formatado 000.000.000-00
     email = models.EmailField("E-mail")
-    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)
+    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)  # será salvo como +55DDXXXXXXXXX
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -92,6 +95,45 @@ class Customer(models.Model):
     def __str__(self):
         return f"{self.full_name} ({self.cpf})"
 
+    @staticmethod
+    def normalize_br_phone(value: str) -> str:
+        """
+        Normaliza números BR para E.164: +55 + DDD (2) + número (8/9).
+        Exemplos aceitos:
+          - "63..."            -> "+5563..."
+          - "(63) 9 9999-9999" -> "+5563999999999"
+          - "5563999999999"    -> "+5563999999999"
+          - "0063..."          -> "+5563..."
+        Regras:
+          - Mantém apenas dígitos
+          - Remove zeros à esquerda
+          - Garante prefixo 55
+          - Se vier com mais de 11 dígitos (após país), mantém os últimos 11
+        """
+        s = re.sub(r"\D", "", (value or ""))
+        if not s:
+            return ""
+
+        # tira zeros à esquerda (trunk)
+        s = s.lstrip("0")
+
+        # separa o core (sem país)
+        if s.startswith("55"):
+            core = s[2:]
+        else:
+            core = s
+
+        # limita o core ao tamanho típico (DDD 2 + número 8/9)
+        if len(core) > 11:
+            core = core[-11:]  # mantém o final (ex.: colagens com DDI repetido)
+
+        # se vier muito curto, ainda assim prefixa — quem valida é a camada de formulário
+        return f"+55{core}" if core else ""
+
+    def save(self, *args, **kwargs):
+        # sempre salva normalizado
+        self.phone = self.normalize_br_phone(self.phone)
+        super().save(*args, **kwargs)
 
 # ---------------------------------------
 # Produto
