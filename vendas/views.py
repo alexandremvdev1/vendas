@@ -525,78 +525,119 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from cloudinary.utils import private_download_url, cloudinary_url
-
 from .models import DownloadLink
+
+logger = logging.getLogger("vendas.views")
+
+def _guess_candidates(asset):
+    """
+    Gera candidatos de public_id, formato, resource_type e type p/ tentar assinar.
+    Cobre migração de CloudinaryStorage (prefixo 'media/') e variações comuns.
+    """
+    # Base: o que o campo tem
+    public_id = getattr(asset, "public_id", None) or str(asset) or ""
+    name = getattr(asset, "name", "") or public_id
+    fmt = getattr(asset, "format", None)
+
+    # Tenta extrair extensão do 'name' (às vezes vem com .pdf/.zip)
+    ext = None
+    base = os.path.basename(name)
+    if "." in base:
+        ext = base.rsplit(".", 1)[-1].lower()
+
+    # Lista de formatos plausíveis p/ raw
+    format_candidates = []
+    for f in [fmt, ext, "pdf", "zip"]:
+        if f and f not in format_candidates:
+            format_candidates.append(f)
+
+    # Possíveis prefixes (migração do CloudinaryStorage costuma ter 'media/')
+    prefixes = ["", "media/"]
+    pub_candidates = []
+    for pref in prefixes:
+        cand = public_id
+        if public_id.startswith("media/") and pref == "":
+            cand = public_id.split("media/", 1)[-1]
+        elif not public_id.startswith("media/") and pref == "media/":
+            cand = f"media/{public_id}"
+        if cand not in pub_candidates:
+            pub_candidates.append(cand)
+
+    # Tipos plausíveis
+    resource_types = ["raw", "image"]
+    delivery_types = ["upload", "private", "authenticated"]
+
+    return pub_candidates, format_candidates, resource_types, delivery_types
+
+
+def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
+    """
+    Tenta gerar URL assinada via private_download_url (preferido) e,
+    se falhar, via cloudinary_url com assinatura.
+    """
+    # 1) private_download_url (exige format p/ raw)
+    try:
+        if resource_type == "raw" and not file_format:
+            raise ValueError("raw exige format")
+        url = private_download_url(
+            public_id,
+            file_format or "",
+            resource_type=resource_type,
+            type=delivery_type,
+            expires_at=expires_at,
+            attachment=True,
+        )
+        return url
+    except Exception as e:
+        logger.debug("private_download_url falhou (%s/%s/%s.%s): %s",
+                     resource_type, delivery_type, public_id, file_format or "", e)
+
+    # 2) Fallback: cloudinary_url com sign_url=True
+    try:
+        url, _ = cloudinary_url(
+            public_id,
+            resource_type=resource_type,
+            type=delivery_type,
+            format=file_format,
+            sign_url=True,
+            attachment=True,
+            expires_at=expires_at,
+        )
+        return url
+    except Exception as e:
+        logger.debug("cloudinary_url falhou (%s/%s/%s.%s): %s",
+                     resource_type, delivery_type, public_id, file_format or "", e)
+        return None
 
 
 def secure_download(request, token):
-    """
-    Entrega segura de arquivo do Cloudinary (resource_type='raw'), com URL assinada.
-    """
-    logger = logging.getLogger("vendas.views")
-
     link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
 
-    asset = link.order.product.digital_file  # CloudinaryField
+    asset = link.order.product.digital_file
+    pub_ids, fmts, rtypes, dtypes = _guess_candidates(asset)
+    expires_at = int((timezone.now() + timedelta(minutes=3)).timestamp())
 
-    # Extrai public_id e formato
-    public_id = getattr(asset, "public_id", None) or str(asset)
-    file_format = getattr(asset, "format", None)
+    # Tenta várias combinações até achar uma válida
+    for public_id in pub_ids:
+        for resource_type in rtypes:
+            for delivery_type in dtypes:
+                # formatos: tente específico e, na falta, None (para image)
+                fmt_list = fmts or [None]
+                for file_format in fmt_list:
+                    url = _sign_url(public_id, file_format, resource_type, delivery_type, expires_at)
+                    if url:
+                        # contabiliza e redireciona
+                        link.download_count += 1
+                        link.save(update_fields=["download_count"])
+                        return HttpResponseRedirect(url)
 
-    if not public_id:
-        logger.error("digital_file sem public_id: %r", asset)
-        raise Http404("Arquivo indisponível.")
-
-    public_id_clean = public_id
-    if not file_format:
-        base = os.path.basename(public_id)
-        if "." in base:
-            public_id_clean = public_id.rsplit(".", 1)[0]
-            file_format = base.rsplit(".", 1)[-1].lower()
-    if not file_format:
-        file_format = "pdf"
-
-    expires_at = int((timezone.now() + timedelta(minutes=2)).timestamp())
-
-    # 1) URL assinada preferencial
-    signed_url = None
-    try:
-        signed_url = private_download_url(
-            public_id_clean,
-            file_format,
-            resource_type="raw",
-            type="upload",     # troque p/ "private" se fez upload como private
-            expires_at=expires_at,
-            attachment=True,
-        )
-    except Exception as e:
-        logger.exception("private_download_url falhou: %s", e)
-
-    # 2) Fallback assinado
-    if not signed_url:
-        try:
-            signed_url, _ = cloudinary_url(
-                public_id_clean,
-                resource_type="raw",
-                type="upload",
-                format=file_format,
-                sign_url=True,
-                attachment=True,
-                expires_at=expires_at,
-            )
-        except Exception as e:
-            logger.exception("cloudinary_url assinado falhou: %s", e)
-
-    if not signed_url:
-        raise Http404("Arquivo temporariamente indisponível.")
-
-    # contabiliza e redireciona
-    link.download_count += 1
-    link.save(update_fields=["download_count"])
-
-    return HttpResponseRedirect(signed_url)
+    # Se chegou aqui, nada encontrado
+    logger.error("Resource not found em todas as combinações. public_id=%r, name=%r",
+                 getattr(asset, "public_id", None) or str(asset),
+                 getattr(asset, "name", None))
+    raise Http404("Arquivo não encontrado no Cloudinary. Verifique o envio do arquivo.")
 
 
 @staff_member_required
