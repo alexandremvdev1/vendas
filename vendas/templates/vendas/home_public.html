@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
-  <title>Produtos • Loja Digital</title>
+  <title>Produtos • {{ company.trade_name|default:company.corporate_name|default:"Loja Digital" }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
 
@@ -11,10 +11,21 @@
       --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18);
       --g1:#0b1020; --g2:#111a3a;
     }
-    body{ background:#f6f8fb; color:var(--ink); }
-    .nav-lite{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
-    .nav-lite .navbar-brand{ font-weight:700; letter-spacing:.2px; }
 
+    /* ---- anti rolagem lateral ---- */
+    html, body { max-width:100%; overflow-x:hidden; }
+    img, iframe { max-width:100%; height:auto; }
+    .input-group { width:100%; }
+    .input-group .form-control { min-width:0; }
+
+    body{ background:#f6f8fb; color:var(--ink); }
+
+    /* Navbar */
+    .nav-lite{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .navbar-brand{ font-weight:700; letter-spacing:.2px; }
+    .brand-logo{ height:34px; width:auto; border-radius:6px; object-fit:contain; }
+
+    /* Hero */
     .hero{
       background:
         radial-gradient(1200px 600px at -10% -10%, rgba(37,99,235,.18), transparent),
@@ -22,8 +33,16 @@
         linear-gradient(180deg,var(--g2),#0f172a);
       color:#fff;
     }
+    /* título menor e responsivo */
+    .hero-title{
+      font-weight:800;
+      font-size:clamp(1.25rem, 2.5vw, 1.75rem); /* ~20px a 28px */
+      line-height:1.2;
+      margin:0 0 .25rem 0;
+    }
     .hero .lead{ color:#cbd5e1; }
 
+    /* Filtros */
     .search-wrap .form-control{
       border-radius:.8rem; padding:.85rem 1rem; border-color:#e2e8f0;
     }
@@ -40,32 +59,44 @@
       box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd;
     }
 
+    /* Cards */
     .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); transition:transform .12s ease, box-shadow .12s ease; }
     .card-clean:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(17,24,39,.12); }
     .card-img-top{ aspect-ratio: 16/10; object-fit:cover; }
-
+    .promo-badge{ position:absolute; top:.75rem; left:.75rem; }
     .price{ font-weight:800; letter-spacing:.2px; }
+    .old-price{ color:#64748b; }
     .text-muted-2{ color:var(--muted); }
 
+    /* Empty */
     .empty{
       background:#fff; border:1px dashed #cbd5e1; border-radius:12px; padding:2rem; text-align:center;
     }
 
+    /* Footer */
     .footer-min{ color:#94a3b8; }
   </style>
 </head>
 <body>
 
+<!-- NAVBAR: marca SEMPRE centralizada; ações somem no mobile -->
 <nav class="navbar nav-lite navbar-dark">
-  <div class="container d-flex align-items-center gap-3">
-    <a class="navbar-brand" href="{% url 'home' %}">Loja Digital</a>
-    <div class="ms-auto d-flex align-items-center gap-2">
-      {% if user.is_authenticated %}
-        <span class="text-light small d-none d-md-inline">Olá, {{ user.username }}</span>
-        <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Sair</a>
-      {% else %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
-      {% endif %}
+  <div class="container">
+    <div class="d-flex w-100 align-items-center" style="min-height:56px;">
+      <!-- espaço fantasma à esquerda para balancear no mobile -->
+      <div class="d-md-none" style="width:48px;"></div>
+
+      
+
+      <!-- ações: escondidas no mobile para não deslocar a marca -->
+      <div class="ms-auto d-none d-md-flex align-items-center gap-2">
+        {% if user.is_authenticated %}
+          <span class="text-light small">Olá, {{ user.username }}</span>
+          <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Sair</a>
+        {% else %}
+          <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
+        {% endif %}
+      </div>
     </div>
   </div>
 </nav>
@@ -73,8 +104,8 @@
 <header class="hero py-5">
   <div class="container">
     <div class="row g-4 align-items-center">
-      <div class="col-lg-8">
-        <h1 class="mb-2 fw-bold">Catálogo de produtos</h1>
+      <div class="col-lg-8 mx-auto text-center">
+        <h1 class="hero-title">Catálogo de produtos</h1>
         <p class="lead mb-4">E-books, planilhas e materiais prontos para download imediato.</p>
 
         <div class="search-wrap">
@@ -84,7 +115,7 @@
             <button id="btn-clear" class="btn btn-outline-secondary">Limpar</button>
           </div>
           <div class="small mt-2 text-light-emphasis">
-            Use a busca e os filtros abaixo para encontrar o que precisa.
+            Use a busca e a ordenação abaixo para encontrar o que precisa.
           </div>
         </div>
       </div>
@@ -94,8 +125,7 @@
 
 <div class="sticky-topbar border-bottom py-2">
   <div class="container">
-    <div class="row g-3 align-items-center toolbar">
-      
+    <div class="row g-3 align-items-center toolbar justify-content-center">
       <div class="col-12 col-md-4">
         <label for="sortSel" class="form-label small text-muted-2 mb-1">Ordenar por</label>
         <select id="sortSel" class="form-select">
@@ -119,27 +149,39 @@
   {% if products %}
     <div id="grid" class="row g-4">
       {% for p in products %}
+        {% with eff=p.price_to_charge old=p.price %}
         <div class="col-12 col-sm-6 col-lg-4 product-card"
              data-title="{{ p.title|lower }}"
              data-desc="{{ p.description|default:''|lower }}"
-             data-price="{{ p.price|floatformat:2 }}"
+             data-price="{{ eff|floatformat:2 }}"
              data-created="{{ p.created_at|date:'U' }}">
-          <div class="card card-clean h-100">
+          <div class="card card-clean h-100 position-relative">
             {% if p.image %}
               <img src="{{ p.image.url }}" class="card-img-top" alt="{{ p.title }}">
             {% else %}
-              <div class="card-img-top d-flex align-items-center justify-content-center" style="background:#eef2f7;">
+              <div class="card-img-top d-flex align-items-center justify-content-center" style="background:#eef2f7; aspect-ratio:16/10;">
                 <span class="text-muted">Sem imagem</span>
               </div>
             {% endif %}
+
+            {% if p.has_promo %}
+              <span class="badge bg-danger promo-badge">PROMO</span>
+            {% endif %}
+
             <div class="card-body d-flex flex-column">
               <h3 class="h6 mb-1">{{ p.title }}</h3>
-              <div class="price fs-5 mb-2">R$ {{ p.price }}</div>
+
+              {% if p.has_promo %}
+                <div class="old-price small"><del>R$ {{ old|floatformat:2 }}</del></div>
+              {% endif %}
+              <div class="price fs-5 mb-2">R$ {{ eff|floatformat:2 }}</div>
+
               <p class="text-muted-2 flex-grow-1 mb-3">{{ p.description|default:""|truncatewords:24 }}</p>
               <a class="btn btn-primary w-100" href="{{ p.get_checkout_url }}">Ir ao checkout</a>
             </div>
           </div>
         </div>
+        {% endwith %}
       {% endfor %}
     </div>
 
@@ -149,7 +191,7 @@
 
     <div id="empty" class="empty mt-4 d-none">
       <div class="h6 mb-1">Nenhum produto encontrado</div>
-      <div class="text-muted-2">Tente alterar os filtros ou limpar a busca.</div>
+      <div class="text-muted-2">Tente alterar a busca ou a ordenação.</div>
     </div>
   {% else %}
     <div class="empty">
@@ -159,50 +201,68 @@
   {% endif %}
 </main>
 
+<!-- RODAPÉ centralizado com dados da empresa e WhatsApp -->
 <footer class="py-4">
-  <div class="container d-flex flex-wrap justify-content-between align-items-center footer-min">
-    <div>© {{ now|date:"Y" }} Loja Digital</div>
+  <div class="container footer-min d-flex flex-column align-items-center text-center gap-3">
+    <div class="fw-semibold">
+      © {% now "Y" %} {{ company.trade_name|default:company.corporate_name|default:"Loja Digital" }}
+    </div>
+
+    {% if company %}
+      <div>
+        {% if company.cnpj %}
+          CNPJ: {{ company.cnpj }}
+          {% if company.address or company.phone_e164 %} • {% endif %}
+        {% endif %}
+        {% if company.address %}
+          {{ company.address }}
+          {% if company.phone_e164 %} • {% endif %}
+        {% endif %}
+        {% if company.phone_e164 %}
+          Tel: {{ company.phone_e164 }}
+        {% endif %}
+      </div>
+
+      {% if company.phone_e164 %}
+        <a class="btn btn-success"
+           href="https://wa.me/{{ company.phone_e164|cut:'+' }}?text={{ 'Olá! Tenho uma dúvida sobre os produtos.'|urlencode }}"
+           target="_blank" rel="noopener">
+          Falar no WhatsApp
+        </a>
+      {% endif %}
+    {% endif %}
+
     <div class="small">Pagamentos via Mercado Pago • Download imediato</div>
   </div>
 </footer>
 
 <script>
 (function(){
-  const $q        = document.getElementById('q');
-  const $clear    = document.getElementById('btn-clear');
-  const $min      = document.getElementById('minPrice');
-  const $max      = document.getElementById('maxPrice');
-  const $sort     = document.getElementById('sortSel');
-  const $grid     = document.getElementById('grid');
-  const $cards    = $grid ? Array.from($grid.querySelectorAll('.product-card')) : [];
-  const $count    = document.getElementById('resCount');
-  const $empty    = document.getElementById('empty');
-  const $more     = document.getElementById('btnMore');
+  const $q     = document.getElementById('q');
+  const $clear = document.getElementById('btn-clear');
+  const $sort  = document.getElementById('sortSel');
+  const $grid  = document.getElementById('grid');
+  const $cards = $grid ? Array.from($grid.querySelectorAll('.product-card')) : [];
+  const $count = document.getElementById('resCount');
+  const $empty = document.getElementById('empty');
+  const $more  = document.getElementById('btnMore');
 
-  let visible = 12; // itens exibidos inicialmente
+  let visible = 12;
   let filtered = [...$cards];
 
   function norm(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
-  function priceOf(el){ return parseFloat(el.dataset.price || '0'); }
+  function priceOf(el){ return parseFloat((el.dataset.price || '0').replace(',', '.')); }
   function createdOf(el){ return parseInt(el.dataset.created || '0', 10); }
   function titleOf(el){ return el.dataset.title || ''; }
 
   function applyFilters(){
-    const q   = norm($q ? $q.value : '');
-    const pmin= parseFloat($min && $min.value ? $min.value : '-1');
-    const pmax= parseFloat($max && $max.value ? $max.value : '100000000');
-
+    const q = norm($q ? $q.value : '');
     filtered = $cards.filter(card=>{
       const t = norm(card.dataset.title);
       const d = norm(card.dataset.desc);
-      const inText = !q || t.includes(q) || d.includes(q);
-      const p = priceOf(card);
-      const inPrice = (isNaN(pmin) || p >= pmin) && (isNaN(pmax) || p <= pmax);
-      return inText && inPrice;
+      return !q || t.includes(q) || d.includes(q);
     });
-
-    applySort();
-    render();
+    applySort(); render();
   }
 
   function applySort(){
@@ -220,42 +280,22 @@
   function render(){
     if (!$grid) return;
     $cards.forEach(c=> c.classList.add('d-none'));
-    const total = filtered.length;
+    const total  = filtered.length;
     const toShow = filtered.slice(0, visible);
     toShow.forEach(c=> c.classList.remove('d-none'));
 
-    if ($count){
-      $count.textContent = total ? `• ${total} resultado${total>1?'s':''}` : '';
-    }
-    if ($empty){
-      $empty.classList.toggle('d-none', total !== 0);
-    }
-    if ($more){
-      $more.classList.toggle('d-none', visible >= total);
-    }
+    if ($count){ $count.textContent = total ? `• ${total} resultado${total>1?'s':''}` : ''; }
+    if ($empty){ $empty.classList.toggle('d-none', total !== 0); }
+    if ($more){  $more.classList.toggle('d-none', visible >= total); }
   }
 
-  // eventos
-  $q   && $q.addEventListener('input', applyFilters);
-  $min && $min.addEventListener('input', applyFilters);
-  $max && $max.addEventListener('input', applyFilters);
-  $sort&& $sort.addEventListener('change', applyFilters);
-
+  $q    && $q.addEventListener('input', applyFilters);
+  $sort && $sort.addEventListener('change', applyFilters);
   $clear && $clear.addEventListener('click', ()=>{
-    $q && ($q.value='');
-    $min && ($min.value='');
-    $max && ($max.value='');
-    visible = 12;
-    applyFilters();
-    $q && $q.focus();
+    $q && ($q.value=''); visible = 12; applyFilters(); $q && $q.focus();
   });
+  $more && $more.addEventListener('click', ()=>{ visible += 12; render(); });
 
-  $more && $more.addEventListener('click', ()=>{
-    visible += 12;
-    render();
-  });
-
-  // inicializa
   applyFilters();
 })();
 </script>

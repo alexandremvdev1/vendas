@@ -48,3 +48,20 @@ class PaymentConfigAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     readonly_fields = ("created_at", "updated_at")
 
+from django.contrib import admin
+from .models import Company
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ("trade_name", "corporate_name", "cnpj", "phone_e164", "active")
+    list_filter = ("active",)
+    search_fields = ("trade_name", "corporate_name", "cnpj")
+    readonly_fields = ("created_at", "updated_at")
+    fieldsets = (
+        ("Dados da empresa", {
+            "fields": ("corporate_name", "trade_name", "cnpj", "address", "phone_e164", "logo")
+        }),
+        ("Status", {
+            "fields": ("active", "created_at", "updated_at")
+        }),
+    )

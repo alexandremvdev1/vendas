@@ -134,6 +134,7 @@
                   <a class="btn btn-sm btn-outline-primary" href="{% url 'pay_card' o.id %}">Checkout</a>
                 {% endif %}
 
+                <!-- Lembrar por e-mail -->
                 <form action="{% url 'order_send_reminder' o.id %}" method="post" class="d-inline">
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -141,6 +142,19 @@
                     Lembrar por e-mail
                   </button>
                 </form>
+
+                <!-- WhatsApp (ao lado) -->
+                {% if o.customer.phone %}
+                  <a
+                    class="btn btn-sm btn-success ms-1 btn-wa"
+                    target="_blank" rel="noopener"
+                    data-phone="{{ o.customer.phone }}"
+                    data-name="{{ o.customer.full_name|default:'' }}"
+                    data-order="{{ o.id }}"
+                    data-link="{% if o.payment_type == 'pix' %}{% url 'payment_pending' o.id %}{% else %}{% url 'pay_card' o.id %}{% endif %}">
+                    WhatsApp
+                  </a>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
@@ -167,5 +181,43 @@
     <div class="alert alert-info">Nenhum pedido encontrado.</div>
   {% endif %}
 </main>
+
+<script>
+/* monta os links de WhatsApp de forma robusta */
+(function(){
+  const waBtns = document.querySelectorAll('.btn-wa');
+  waBtns.forEach(btn=>{
+    const raw = (btn.dataset.phone || '');
+    const name = (btn.dataset.name || '').trim();
+    const order = btn.dataset.order || '';
+    const linkPath = btn.dataset.link || '/';
+
+    // limpa para dígitos
+    let num = raw.replace(/\D/g,'');
+    if (!num){
+      btn.classList.add('disabled');
+      btn.setAttribute('aria-disabled','true');
+      return;
+    }
+    // remove zeros à esquerda
+    num = num.replace(/^0+/, '');
+    // se não começar com 55 e parecer número nacional (10/11 dígitos), prefixa 55
+    if (!/^55/.test(num) && (num.length === 10 || num.length === 11)) {
+      num = '55' + num;
+    }
+
+    const origin = window.location.origin;
+    const absLink = linkPath.startsWith('http') ? linkPath : origin + linkPath;
+
+    const greeting = name ? `Olá, ${name}!` : 'Olá!';
+    const msg = `${greeting} Aqui é da Loja Yarin Impressõesa. Sobre seu pedido #${order}, segue o link: ${absLink}`;
+    const url = new URL(`https://wa.me/${num}`);
+    url.searchParams.set('text', msg);
+
+    btn.href = url.toString();
+    btn.title = 'Enviar WhatsApp';
+  });
+})();
+</script>
 </body>
 </html>

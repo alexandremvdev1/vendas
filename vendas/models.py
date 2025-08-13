@@ -298,3 +298,66 @@ class DownloadLink(models.Model):
     @classmethod
     def create_for_order(cls, order, days_valid=7):
         return cls.objects.create(order=order, expires_at=timezone.now() + timedelta(days=days_valid))
+
+# --- helpers e validators para Company ---
+import re
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
+
+def _only_digits(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+def _format_cnpj(digits: str) -> str:
+    # recebe '12345678000195' e devolve '12.345.678/0001-95'
+    if len(digits) != 14:
+        return digits
+    return f"{digits[0:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:14]}"
+
+phone_e164_validator = RegexValidator(
+    regex=r"^\+\d{10,15}$",
+    message="Use o formato internacional (E.164), ex.: +556300000000",
+)
+
+class Company(models.Model):
+    corporate_name = models.CharField("Razão social", max_length=160)
+    trade_name     = models.CharField("Nome fantasia", max_length=160, blank=True)
+    cnpj           = models.CharField("CNPJ", max_length=18, unique=True,
+                                      help_text="Ex.: 12.345.678/0001-95")
+    address        = models.TextField("Endereço", blank=True)
+    phone_e164     = models.CharField(
+        "Telefone (E.164)", max_length=20, blank=True,
+        validators=[phone_e164_validator],
+        help_text="Ex.: +556300000000",
+    )
+    logo = models.ImageField(
+        "Logo",
+        upload_to="empresa/logos/",
+        blank=True, null=True,
+        **(globals().get("IMAGE_STORAGE_KW", {})),  # usa Cloudinary se estiver ativo
+    )
+
+    active     = models.BooleanField("Ativa?", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Empresa"
+        verbose_name_plural = "Empresas"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.trade_name or self.corporate_name
+
+    def clean(self):
+        # Normaliza e valida CNPJ (verificação simples: 14 dígitos)
+        d = _only_digits(self.cnpj)
+        if len(d) != 14:
+            raise ValidationError({"cnpj": "CNPJ deve ter 14 dígitos."})
+        self.cnpj = _format_cnpj(d)
+
+    @property
+    def logo_url(self):
+        try:
+            return self.logo.url if self.logo else ""
+        except Exception:
+            return ""

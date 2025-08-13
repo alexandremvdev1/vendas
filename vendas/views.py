@@ -1,3 +1,4 @@
+# vendas/views.py
 import os
 import re
 import json
@@ -5,7 +6,7 @@ import logging
 from decimal import Decimal
 from datetime import timedelta
 from urllib.parse import urlparse
-
+from .models import Product, Customer, Order, DownloadLink, get_mp_access_token, Company
 import mercadopago
 
 from django.conf import settings
@@ -37,6 +38,37 @@ except Exception:
     def get_mp_public_key():
         return getattr(settings, "MP_PUBLIC_KEY", "")
 
+
+# -------------------- Helpers de preço (promoção) --------------------
+def _effective_price(product: Product) -> Decimal:
+    """
+    Preço vigente do produto considerando promoção.
+    Funciona com os campos: promo_price/promotional_price/price_promo e
+    flags: promo_active/is_promo/is_on_promo (se existirem).
+    """
+    promo_price = (
+        getattr(product, "promo_price", None)
+        or getattr(product, "promotional_price", None)
+        or getattr(product, "price_promo", None)
+    )
+    promo_flag = (
+        getattr(product, "promo_active", None)
+        if hasattr(product, "promo_active") else
+        getattr(product, "is_promo", None)
+        if hasattr(product, "is_promo") else
+        getattr(product, "is_on_promo", None)
+        if hasattr(product, "is_on_promo") else
+        None
+    )
+
+    if promo_price and (promo_flag is None or bool(promo_flag) is True):
+        try:
+            return Decimal(promo_price)
+        except Exception:
+            pass
+    return Decimal(product.price)
+
+
 # -------------------- Mercado Pago: helpers --------------------
 def mp_sdk():
     token = get_mp_access_token()
@@ -45,10 +77,12 @@ def mp_sdk():
         raise RuntimeError("MP Access Token ausente")
     return mercadopago.SDK(token)
 
+
 def _ensure_external_ref(order: Order):
     if not order.external_ref:
         order.external_ref = f"order-{order.pk}"
         order.save(update_fields=["external_ref"])
+
 
 def build_mp_notification_url(request) -> str:
     """
@@ -74,6 +108,7 @@ def build_mp_notification_url(request) -> str:
         return ""
     return url
 
+
 # -------------------- PIX (Payments API) --------------------
 def create_pix_payment(product, customer, order, request):
     """
@@ -85,6 +120,12 @@ def create_pix_payment(product, customer, order, request):
     if order.payment_id:  # já existe um pagamento vinculado a este pedido
         logger.info("PIX: pulando criação, order %s já possui payment_id %s", order.id, order.payment_id)
         return {"skipped": True, "reason": "already_has_payment_id"}
+
+    # Garante que o valor do pedido está alinhado com o preço vigente
+    current_price = _effective_price(product)
+    if order.amount != current_price:
+        order.amount = current_price
+        order.save(update_fields=["amount"])
 
     sdk = mp_sdk()
     cpf_digits = re.sub(r"\D", "", customer.cpf or "")
@@ -99,7 +140,7 @@ def create_pix_payment(product, customer, order, request):
         payer["identification"] = {"type": "CPF", "number": cpf_digits}
 
     body = {
-        "transaction_amount": float(product.price),
+        "transaction_amount": float(order.amount),  # <<< usa o valor do pedido
         "description": product.title,
         "payment_method_id": "pix",
         "external_reference": order.external_ref,
@@ -135,6 +176,7 @@ def create_pix_payment(product, customer, order, request):
     order.pix_ticket_url = ticket
     order.save(update_fields=["payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return resp
+
 
 def _refresh_pix_from_mp(order: Order):
     """
@@ -186,6 +228,7 @@ def _refresh_pix_from_mp(order: Order):
         return True
     return False
 
+
 # -------------------- Checkout Pro (Cartão) --------------------
 def create_card_preference(product, customer, order, request):
     """
@@ -216,7 +259,7 @@ def create_card_preference(product, customer, order, request):
             "title": product.title,
             "quantity": 1,
             "currency_id": "BRL",
-            "unit_price": float(product.price),
+            "unit_price": float(order.amount),  # <<< valor do pedido (promo incluída)
             "description": f"Pedido {order.external_ref}"
         }],
         "payer": payer,
@@ -265,6 +308,7 @@ def create_card_preference(product, customer, order, request):
         raise RuntimeError("Preference criada, mas init_point está vazio.")
     return url
 
+
 def start_card_checkout(request, order_id):
     """
     Inicia/continua o Checkout Pro (redireciona para o init_point).
@@ -291,6 +335,7 @@ def start_card_checkout(request, order_id):
         })
 
     return redirect(url)
+
 
 def mp_return(request):
     """
@@ -333,6 +378,7 @@ def mp_return(request):
         return redirect("payment_success", order_id=order.id)
     return redirect("payment_pending", order_id=order.id)
 
+
 # -------------------- Pedido / Páginas principais --------------------
 def get_or_reuse_pending_order(product: Product, customer: Customer, payment_type: str):
     """
@@ -358,12 +404,13 @@ def get_or_reuse_pending_order(product: Product, customer: Customer, payment_typ
         order = Order.objects.create(
             product=product,
             customer=customer,
-            amount=product.price,
+            amount=_effective_price(product),  # <<< já nasce com o preço vigente
             status="pending",
             payment_type=payment_type,
             expires_at=timezone.now() + timedelta(days=2),
         )
     return order, True
+
 
 def home(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
@@ -396,6 +443,7 @@ def home(request):
     }
     return render(request, "vendas/home.html", ctx)
 
+
 # --- checkout_view: grava amount com o preço vigente e segue o fluxo normal ---
 def checkout_view(request, slug, token):
     """
@@ -409,6 +457,7 @@ def checkout_view(request, slug, token):
         if form.is_valid():
             data = form.cleaned_data
 
+            # encontra ou cria cliente pelo CPF
             customer, _ = Customer.objects.get_or_create(
                 cpf=data["cpf"],
                 defaults={
@@ -417,6 +466,7 @@ def checkout_view(request, slug, token):
                     "phone": data.get("phone", ""),
                 },
             )
+            # atualiza dados se mudaram
             changed = False
             if customer.full_name != data["full_name"]:
                 customer.full_name = data["full_name"]; changed = True
@@ -427,6 +477,7 @@ def checkout_view(request, slug, token):
             if changed:
                 customer.save()
 
+            # método escolhido
             pay_method = request.POST.get("pay_method", "pix")
             payment_type = "card" if pay_method == "card" else "pix"
 
@@ -443,6 +494,7 @@ def checkout_view(request, slug, token):
 
             _ensure_external_ref(order)
 
+            # e-mail: pedido criado (só quando criado agora)
             if created:
                 try:
                     send_order_created_email(order, request=request)
@@ -452,7 +504,7 @@ def checkout_view(request, slug, token):
             if payment_type == "card":
                 return redirect("pay_card", order_id=order.id)
 
-            # Pix
+            # Pix: cria pagamento apenas se ainda não existir payment_id
             try:
                 create_pix_payment(product, customer, order, request)
             except Exception as e:
@@ -467,96 +519,6 @@ def checkout_view(request, slug, token):
         form = CheckoutForm()
 
     return render(request, "vendas/checkout.html", {"product": product, "form": form})
-
-# --- helper: preço vigente do produto (promo se ativa) ---
-def _effective_price(product):
-    # tenta vários nomes de campos para maior robustez
-    promo_price = getattr(product, "promo_price", None) \
-                  or getattr(product, "promotional_price", None) \
-                  or getattr(product, "price_promo", None)
-    promo_flag = getattr(product, "is_promo", None)
-    if promo_flag is None:
-        promo_flag = getattr(product, "is_on_promo", None)
-    if promo_flag is None:
-        promo_flag = getattr(product, "promo_active", None)
-
-    # se houver preço promo e (não existe flag ou a flag está True), usa promo
-    if promo_price and (promo_flag is None or bool(promo_flag) is True):
-        return promo_price
-    return product.price
-
-# --- Checkout Pro: também usar order.amount ---
-def create_card_preference(product, customer, order, request):
-    _ensure_external_ref(order)
-    sdk = mp_sdk()
-
-    return_base = request.build_absolute_uri(reverse("mp_return"))
-    success_url = return_base
-    pending_url = return_base
-    failure_url = return_base
-
-    notification_url = build_mp_notification_url(request)
-
-    payer = {
-        "name": (customer.full_name.split(" ")[0] or customer.full_name),
-        "surname": " ".join(customer.full_name.split(" ")[1:]) or customer.full_name,
-        "email": customer.email or "",
-        "phone": {"number": re.sub(r"\D", "", customer.phone or "")[:15]},
-        "identification": {"type": "CPF", "number": re.sub(r"\D", "", customer.cpf or "")[:14]},
-    }
-
-    pref_body = {
-        "items": [{
-            "title": product.title,
-            "quantity": 1,
-            "currency_id": "BRL",
-            "unit_price": float(order.amount),  # <<< valor do pedido
-            "description": f"Pedido {order.external_ref}"
-        }],
-        "payer": payer,
-        "external_reference": order.external_ref,
-        "back_urls": {"success": success_url, "pending": pending_url, "failure": failure_url},
-        "auto_return": "approved",
-        "expires": True,
-        "expiration_date_to": order.expires_at.isoformat(),
-        "payment_methods": {
-            "excluded_payment_types": [
-                {"id": "ticket"}, {"id": "atm"}, {"id": "bank_transfer"},
-                {"id": "debit_card"}, {"id": "prepaid_card"}
-            ],
-        },
-        "statement_descriptor": "LOJA DIGITAL",
-    }
-    if notification_url:
-        pref_body["notification_url"] = notification_url
-
-    if order.preference_id:
-        try:
-            res = sdk.preference().get(order.preference_id)
-            resp = res.get("response", {}) or {}
-            url = resp.get("init_point") or resp.get("sandbox_init_point")
-            if url:
-                return url
-        except Exception:
-            pass
-
-    res = sdk.preference().create(pref_body)
-    status_code = res.get("status")
-    resp = res.get("response", {}) or {}
-    logger.info("MP preference.create status=%s order=%s resp=%s",
-                status_code, order.id, json.dumps(resp, ensure_ascii=False)[:1500])
-
-    if status_code not in (200, 201):
-        msg = resp.get("message") or resp.get("error") or "erro_desconhecido"
-        raise RuntimeError(f"MP preference error {status_code}: {msg}")
-
-    order.preference_id = str(resp.get("id") or "")
-    order.save(update_fields=["preference_id"])
-
-    url = resp.get("init_point") or resp.get("sandbox_init_point")
-    if not url:
-        raise RuntimeError("Preference criada, mas init_point está vazio.")
-    return url
 
 
 def payment_pending(request, order_id):
@@ -591,6 +553,7 @@ def payment_pending(request, order_id):
     order.refresh_from_db(fields=["status", "payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return render(request, "vendas/pending.html", {"order": order})
 
+
 def payment_success(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.status != "paid":
@@ -599,20 +562,8 @@ def payment_success(request, order_id):
         DownloadLink.create_for_order(order)
     return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
 
+
 # -------------------- DOWNLOAD SEGURO (Cloudinary) --------------------
-# vendas/views.py (substitua apenas o secure_download e helpers)
-
-import os
-import logging
-from datetime import timedelta
-from django.http import Http404, HttpResponseRedirect
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
-from cloudinary.utils import private_download_url, cloudinary_url
-from .models import DownloadLink
-
-logger = logging.getLogger(__name__)
-
 def _guess_candidates(asset):
     """
     Gera candidatos de public_id/format/resource_type/type.
@@ -752,6 +703,7 @@ def sales_report(request):
 
     return render(request, "vendas/report.html", {"agg": agg, "top": top, "start": start, "end": end})
 
+
 # -------------------- Status / Polling / Webhook --------------------
 def sync_payment_status_from_mp(order: Order):
     if order.status != "pending" or not order.payment_id:
@@ -766,6 +718,7 @@ def sync_payment_status_from_mp(order: Order):
         order.mark_cancelled()
     return order.status
 
+
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.is_expired and order.status == "pending":
@@ -773,6 +726,7 @@ def order_status(request, order_id):
     else:
         sync_payment_status_from_mp(order)
     return JsonResponse({"status": order.status})
+
 
 @csrf_exempt
 def mp_webhook(request):
@@ -829,33 +783,43 @@ def mp_webhook(request):
 
     return HttpResponse("ok", status=200)
 
+
 # -------------------- Catálogo público --------------------
 def catalog(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
+    company = Company.objects.filter(active=True).first()  # para logo/nome/whatsapp no template
 
     # KPIs
+    now = timezone.now()
     today = timezone.localdate()
-    start_30 = timezone.now() - timedelta(days=30)
+    start_30 = now - timedelta(days=30)
 
     today_new = Product.objects.filter(active=True, created_at__date=today).count()
 
     paid_30_qs = Order.objects.filter(status="paid", created_at__gte=start_30)
     agg = paid_30_qs.aggregate(
-        receita_30d=Sum("amount"),
+        receita_30d=Coalesce(
+            Sum("amount"),
+            Value(Decimal("0.00")),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        ),
         pedidos_30d=Count("id"),
     )
-    receita_30d = agg["receita_30d"] or 0
+    receita_30d = agg["receita_30d"] or Decimal("0.00")
     pedidos_30d = agg["pedidos_30d"] or 0
-    ticket_30d = (receita_30d / pedidos_30d) if pedidos_30d else 0
+    ticket_30d = (receita_30d / pedidos_30d) if pedidos_30d else Decimal("0.00")
 
     ctx = {
         "products": products,
+        "company": company,           # <<< usado no header/rodapé
+        "now": now,                   # se o template usar {{ now|date:"Y" }}
         "kpi_today_new": today_new,
         "kpi_receita_30d": receita_30d,
         "kpi_pedidos_30d": pedidos_30d,
         "kpi_ticket_30d": ticket_30d,
     }
     return render(request, "vendas/home_public.html", ctx)
+
 
 # -------------------- Lista de pedidos (admin simplificado) --------------------
 @staff_member_required
@@ -923,6 +887,7 @@ def orders_list(request):
         "ticket_medio": ticket_medio,
     }
     return render(request, "vendas/orders_list.html", ctx)
+
 
 @staff_member_required
 @require_POST
