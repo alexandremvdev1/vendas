@@ -99,9 +99,11 @@ USE_I18N = True
 USE_TZ = True
 
 # ---------------- Arquivos estáticos e mídia ----------------
-STATIC_URL = 'static/'
+# certo
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
