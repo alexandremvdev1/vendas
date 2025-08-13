@@ -113,6 +113,18 @@ if R2_READY:
 
     DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
+    # Não sobrescrever arquivos com o mesmo nome
+    AWS_S3_FILE_OVERWRITE = False
+
+    # URLs assinadas (tempo de expiração em segundos)
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600  # 1 hora; pode reduzir (ex.: 300) se quiser
+
+    # (Opcional) Cache do lado do cliente/CDN
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",  # 24h
+    }
+
 # ---------------- Auth ----------------
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'

@@ -1,37 +1,33 @@
 # vendas/views.py
-from datetime import timedelta
-from decimal import Decimal
+import os
+import re
 import json
 import logging
-import re
+from decimal import Decimal
+from datetime import timedelta
 from urllib.parse import urlparse
-from cloudinary.utils import private_download_url
 
+import boto3
+from botocore.config import Config
 import mercadopago
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, DecimalField, Q, Sum, Value
 from django.db.models.functions import Coalesce
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse, FileResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from .forms import CheckoutForm
+from .emails import send_order_created_email, send_payment_reminder_email
 from .models import Product, Customer, Order, DownloadLink, get_mp_access_token
-from .emails import send_order_created_email
-
-from decimal import Decimal
-from django.contrib import messages
-from django.core.paginator import Paginator
-from django.views.decorators.http import require_POST
-from django.db.models import Count, DecimalField, Q, Sum, Value
-from django.db.models.functions import Coalesce
-from .emails import send_payment_reminder_email
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +38,7 @@ except Exception:
     def get_mp_public_key():
         return getattr(settings, "MP_PUBLIC_KEY", "")
 
+
 # -------------------- Mercado Pago: helpers --------------------
 def mp_sdk():
     token = get_mp_access_token()
@@ -50,10 +47,12 @@ def mp_sdk():
         raise RuntimeError("MP Access Token ausente")
     return mercadopago.SDK(token)
 
+
 def _ensure_external_ref(order: Order):
     if not order.external_ref:
         order.external_ref = f"order-{order.pk}"
         order.save(update_fields=["external_ref"])
+
 
 def build_mp_notification_url(request) -> str:
     """
@@ -78,6 +77,7 @@ def build_mp_notification_url(request) -> str:
     if host in {"localhost", "127.0.0.1"} or host.endswith(".local"):
         return ""
     return url
+
 
 # -------------------- PIX (Payments API) --------------------
 def create_pix_payment(product, customer, order, request):
@@ -127,8 +127,8 @@ def create_pix_payment(product, customer, order, request):
 
     tx = (resp.get("point_of_interaction") or {}).get("transaction_data") or {}
     qr_code = tx.get("qr_code") or ""
-    qr_b64  = tx.get("qr_code_base64") or ""
-    ticket  = tx.get("ticket_url") or ""
+    qr_b64 = tx.get("qr_code_base64") or ""
+    ticket = tx.get("ticket_url") or ""
 
     if isinstance(qr_b64, str) and qr_b64.startswith("data:image"):
         qr_b64 = qr_b64.split(",", 1)[-1]
@@ -140,6 +140,7 @@ def create_pix_payment(product, customer, order, request):
     order.pix_ticket_url = ticket
     order.save(update_fields=["payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return resp
+
 
 def _refresh_pix_from_mp(order: Order):
     """
@@ -171,8 +172,8 @@ def _refresh_pix_from_mp(order: Order):
 
     tx = (res.get("point_of_interaction") or {}).get("transaction_data") or {}
     qr_code = tx.get("qr_code") or ""
-    qr_b64  = tx.get("qr_code_base64") or ""
-    ticket  = tx.get("ticket_url") or ""
+    qr_b64 = tx.get("qr_code_base64") or ""
+    ticket = tx.get("ticket_url") or ""
 
     if isinstance(qr_b64, str) and qr_b64.startswith("data:image"):
         qr_b64 = qr_b64.split(",", 1)[-1]
@@ -180,16 +181,20 @@ def _refresh_pix_from_mp(order: Order):
 
     updates = []
     if qr_code and qr_code != order.pix_qr_code:
-        order.pix_qr_code = qr_code; updates.append("pix_qr_code")
+        order.pix_qr_code = qr_code
+        updates.append("pix_qr_code")
     if qr_b64 and qr_b64 != order.pix_qr_base64:
-        order.pix_qr_base64 = qr_b64; updates.append("pix_qr_base64")
+        order.pix_qr_base64 = qr_b64
+        updates.append("pix_qr_base64")
     if ticket and ticket != order.pix_ticket_url:
-        order.pix_ticket_url = ticket; updates.append("pix_ticket_url")
+        order.pix_ticket_url = ticket
+        updates.append("pix_ticket_url")
 
     if updates:
         order.save(update_fields=updates)
         return True
     return False
+
 
 # -------------------- Checkout Pro (Cartão) --------------------
 def create_card_preference(product, customer, order, request):
@@ -271,6 +276,7 @@ def create_card_preference(product, customer, order, request):
         raise RuntimeError("Preference criada, mas init_point está vazio.")
     return url
 
+
 def start_card_checkout(request, order_id):
     """
     Inicia/continua o Checkout Pro (redireciona para o init_point).
@@ -297,6 +303,7 @@ def start_card_checkout(request, order_id):
         })
 
     return redirect(url)
+
 
 def mp_return(request):
     """
@@ -342,6 +349,7 @@ def mp_return(request):
         return redirect("payment_success", order_id=order.id)
     return redirect("payment_pending", order_id=order.id)
 
+
 # -------------------- Pedido / Páginas principais --------------------
 def get_or_reuse_pending_order(product: Product, customer: Customer, payment_type: str):
     """
@@ -374,6 +382,7 @@ def get_or_reuse_pending_order(product: Product, customer: Customer, payment_typ
         )
     return order, True
 
+
 def home(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
 
@@ -404,6 +413,7 @@ def home(request):
         "kpi_ticket_30d": ticket_30d,
     }
     return render(request, "vendas/home.html", ctx)  # ou o template do painel
+
 
 def checkout_view(request, slug, token):
     """
@@ -474,6 +484,7 @@ def checkout_view(request, slug, token):
 
     return render(request, "vendas/checkout.html", {"product": product, "form": form})
 
+
 def payment_pending(request, order_id):
     """
     Garante QR/código Pix para o MESMO pedido (sem criar novo pedido).
@@ -498,7 +509,7 @@ def payment_pending(request, order_id):
                 _refresh_pix_from_mp(order)
         except Exception as e:
             logger.exception("Falha ao garantir QR do Pix (order %s): %s", order.id, e)
-            order.refresh_from_db(fields=["status","payment_id","pix_qr_code","pix_qr_base64","pix_ticket_url"])
+            order.refresh_from_db(fields=["status", "payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
             return render(request, "vendas/pending.html", {
                 "order": order,
                 "error": "Erro ao obter QR Pix. Revise o Access Token/credenciais e veja os logs."
@@ -506,6 +517,7 @@ def payment_pending(request, order_id):
 
     order.refresh_from_db(fields=["status", "payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return render(request, "vendas/pending.html", {"order": order})
+
 
 def payment_success(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
@@ -515,131 +527,66 @@ def payment_success(request, order_id):
         DownloadLink.create_for_order(order)
     return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
 
-# vendas/views.py
-import os
-import logging
-from datetime import timedelta
 
-from django.http import Http404, HttpResponseRedirect
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
-
-from cloudinary.utils import private_download_url, cloudinary_url
-from .models import DownloadLink
-
-logger = logging.getLogger("vendas.views")
-
-def _guess_candidates(asset):
+# -------------------- DOWNLOAD SEGURO (R2 / S3) --------------------
+def _r2_client():
     """
-    Gera candidatos de public_id, formato, resource_type e type p/ tentar assinar.
-    Cobre migração de CloudinaryStorage (prefixo 'media/') e variações comuns.
+    Cliente S3 apontando para o endpoint da R2.
+    Requer as envs definidas no settings (R2_* -> AWS_*).
     """
-    # Base: o que o campo tem
-    public_id = getattr(asset, "public_id", None) or str(asset) or ""
-    name = getattr(asset, "name", "") or public_id
-    fmt = getattr(asset, "format", None)
-
-    # Tenta extrair extensão do 'name' (às vezes vem com .pdf/.zip)
-    ext = None
-    base = os.path.basename(name)
-    if "." in base:
-        ext = base.rsplit(".", 1)[-1].lower()
-
-    # Lista de formatos plausíveis p/ raw
-    format_candidates = []
-    for f in [fmt, ext, "pdf", "zip"]:
-        if f and f not in format_candidates:
-            format_candidates.append(f)
-
-    # Possíveis prefixes (migração do CloudinaryStorage costuma ter 'media/')
-    prefixes = ["", "media/"]
-    pub_candidates = []
-    for pref in prefixes:
-        cand = public_id
-        if public_id.startswith("media/") and pref == "":
-            cand = public_id.split("media/", 1)[-1]
-        elif not public_id.startswith("media/") and pref == "media/":
-            cand = f"media/{public_id}"
-        if cand not in pub_candidates:
-            pub_candidates.append(cand)
-
-    # Tipos plausíveis
-    resource_types = ["raw", "image"]
-    delivery_types = ["upload", "private", "authenticated"]
-
-    return pub_candidates, format_candidates, resource_types, delivery_types
-
-
-def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
-    """
-    Tenta gerar URL assinada via private_download_url (preferido) e,
-    se falhar, via cloudinary_url com assinatura.
-    """
-    # 1) private_download_url (exige format p/ raw)
-    try:
-        if resource_type == "raw" and not file_format:
-            raise ValueError("raw exige format")
-        url = private_download_url(
-            public_id,
-            file_format or "",
-            resource_type=resource_type,
-            type=delivery_type,
-            expires_at=expires_at,
-            attachment=True,
-        )
-        return url
-    except Exception as e:
-        logger.debug("private_download_url falhou (%s/%s/%s.%s): %s",
-                     resource_type, delivery_type, public_id, file_format or "", e)
-
-    # 2) Fallback: cloudinary_url com sign_url=True
-    try:
-        url, _ = cloudinary_url(
-            public_id,
-            resource_type=resource_type,
-            type=delivery_type,
-            format=file_format,
-            sign_url=True,
-            attachment=True,
-            expires_at=expires_at,
-        )
-        return url
-    except Exception as e:
-        logger.debug("cloudinary_url falhou (%s/%s/%s.%s): %s",
-                     resource_type, delivery_type, public_id, file_format or "", e)
-        return None
+    return boto3.client(
+        "s3",
+        endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+        aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", None),
+        aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", None),
+        region_name=getattr(settings, "AWS_S3_REGION_NAME", "auto"),
+        config=Config(signature_version=getattr(settings, "AWS_S3_SIGNATURE_VERSION", "s3v4")),
+    )
 
 
 def secure_download(request, token):
+    """
+    Gera uma URL pré-assinada (expira em ~2 minutos) para baixar o arquivo
+    privado do bucket da R2. Se R2 não estiver configurado (dev), faz fallback
+    servindo o arquivo localmente.
+    """
     link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
 
-    asset = link.order.product.digital_file
-    pub_ids, fmts, rtypes, dtypes = _guess_candidates(asset)
-    expires_at = int((timezone.now() + timedelta(minutes=3)).timestamp())
+    f = link.order.product.digital_file
+    if not f:
+        raise Http404("Arquivo indisponível.")
 
-    # Tenta várias combinações até achar uma válida
-    for public_id in pub_ids:
-        for resource_type in rtypes:
-            for delivery_type in dtypes:
-                # formatos: tente específico e, na falta, None (para image)
-                fmt_list = fmts or [None]
-                for file_format in fmt_list:
-                    url = _sign_url(public_id, file_format, resource_type, delivery_type, expires_at)
-                    if url:
-                        # contabiliza e redireciona
-                        link.download_count += 1
-                        link.save(update_fields=["download_count"])
-                        return HttpResponseRedirect(url)
+    filename = os.path.basename(f.name or "")
 
-    # Se chegou aqui, nada encontrado
-    logger.error("Resource not found em todas as combinações. public_id=%r, name=%r",
-                 getattr(asset, "public_id", None) or str(asset),
-                 getattr(asset, "name", None))
-    raise Http404("Arquivo não encontrado no Cloudinary. Verifique o envio do arquivo.")
+    # Se não há configuração S3 (dev), serve do disco
+    if not getattr(settings, "AWS_S3_ENDPOINT_URL", None) or not getattr(settings, "AWS_STORAGE_BUCKET_NAME", None) \
+       or not getattr(settings, "AWS_ACCESS_KEY_ID", None):
+        try:
+            return FileResponse(f.open("rb"), as_attachment=True, filename=filename)
+        except Exception:
+            raise Http404("Arquivo local não encontrado.")
+
+    # R2: gera URL pré-assinada
+    client = _r2_client()
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": settings.AWS_STORAGE_BUCKET_NAME,
+            "Key": f.name,
+            "ResponseContentDisposition": f'attachment; filename="{filename}"',
+        },
+        ExpiresIn=120,  # 2 minutos
+    )
+
+    link.download_count += 1
+    link.save(update_fields=["download_count"])
+
+    return HttpResponseRedirect(url)
 
 
+# -------------------- Relatório --------------------
 @staff_member_required
 def sales_report(request):
     start = request.GET.get("start")
@@ -664,6 +611,7 @@ def sales_report(request):
 
     return render(request, "vendas/report.html", {"agg": agg, "top": top, "start": start, "end": end})
 
+
 # -------------------- Status / Polling / Webhook --------------------
 def sync_payment_status_from_mp(order: Order):
     if order.status != "pending" or not order.payment_id:
@@ -678,6 +626,7 @@ def sync_payment_status_from_mp(order: Order):
         order.mark_cancelled()
     return order.status
 
+
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.is_expired and order.status == "pending":
@@ -685,6 +634,7 @@ def order_status(request, order_id):
     else:
         sync_payment_status_from_mp(order)
     return JsonResponse({"status": order.status})
+
 
 @csrf_exempt
 def mp_webhook(request):
@@ -741,11 +691,8 @@ def mp_webhook(request):
 
     return HttpResponse("ok", status=200)
 
-# vendas/views.py
-from datetime import timedelta
-from django.db.models import Sum, Count
-from django.utils import timezone
 
+# -------------------- Catálogo público --------------------
 def catalog(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
 
@@ -771,10 +718,10 @@ def catalog(request):
         "kpi_pedidos_30d": pedidos_30d,
         "kpi_ticket_30d": ticket_30d,
     }
-    return render(request, "vendas/home_public.html", ctx)  # ou o nome do seu template painel
+    return render(request, "vendas/home_public.html", ctx)
 
-from datetime import timedelta
 
+# -------------------- Lista de pedidos (admin simplificado) --------------------
 @staff_member_required
 def orders_list(request):
     """
@@ -841,6 +788,7 @@ def orders_list(request):
     }
     return render(request, "vendas/orders_list.html", ctx)
 
+
 @staff_member_required
 @require_POST
 def order_send_reminder(request, order_id):
@@ -863,4 +811,3 @@ def order_send_reminder(request, order_id):
         messages.error(request, "Erro ao enviar e-mail de lembrete.")
 
     return redirect(next_url)
-
