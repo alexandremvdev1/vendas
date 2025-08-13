@@ -73,13 +73,29 @@ WSGI_APPLICATION = 'loja.wsgi.application'
 # Sua URL do Neon (pode/deve vir de DATABASE_URL em produção)
 NEON_URL = "postgresql://neondb_owner:npg_9EnSeQ7gcPTW@ep-silent-sea-adlwde7u-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.getenv("DATABASE_URL", NEON_URL),
-        conn_max_age=600,  # mantém conexões abertas
-        ssl_require=True,
-    )
-}
+# ---------------- Banco de dados (Neon via DATABASE_URL) ----------------
+import dj_database_url
+
+DEFAULT_SQLITE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+IS_RENDER = os.getenv("RENDER", "") != ""  # Render define RENDER=1
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,  # Neon precisa SSL
+        )
+    }
+else:
+    # Em desenvolvimento local, cai no SQLite se não houver DATABASE_URL
+    if DEBUG and not IS_RENDER:
+        DATABASES = {"default": dj_database_url.parse(DEFAULT_SQLITE_URL)}
+    else:
+        raise RuntimeError("DATABASE_URL não definido em produção.")
+
 
 # ---------------- Validações de senha ----------------
 AUTH_PASSWORD_VALIDATORS = [
