@@ -6,12 +6,14 @@ import cloudinary       # pip install cloudinary django-cloudinary-storage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-f#bkh*7ca_)d@f^ic58ya@1ksk_-q+t0xcl&-@te9y^7^5vy%1')
+# ---------------- Core ----------------
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'change-me-in-prod')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
 ALLOWED_HOSTS = [
     *[h for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h],
-    '127.0.0.1', 'localhost',
+    '127.0.0.1',
+    'localhost',
     'vendas-ozvo.onrender.com',
 ]
 
@@ -27,7 +29,7 @@ INSTALLED_APPS = [
 ]
 
 # ========= Cloudinary (ativação condicional) =========
-# Só ativa se tiver CLOUDINARY_URL OU (cloud_name + api_key + api_secret)
+# Ativa somente se houver CLOUDINARY_URL OU (cloud_name + api_key + api_secret)
 USE_CLOUDINARY = bool(
     os.getenv('CLOUDINARY_URL') or
     (
@@ -40,6 +42,7 @@ USE_CLOUDINARY = bool(
 if USE_CLOUDINARY:
     INSTALLED_APPS += ['cloudinary', 'cloudinary_storage']
 
+# ---------------- Middleware ----------------
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -69,9 +72,8 @@ WSGI_APPLICATION = 'loja.wsgi.application'
 # ---------------- Banco de dados ----------------
 DEFAULT_SQLITE_URL = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 DEFAULT_NEON_URL = (
-    "postgresql://neondb_owner:npg_ItqpbK5NLaD4"
-    "@ep-silent-sea-adlwde7u-pooler.c-2.us-east-1.aws.neon.tech/neondb"
-    "?sslmode=require"
+    "postgresql://neondb_owner:password"
+    "@host.neon.tech/neondb?sslmode=require"
 )
 DATABASE_URL = os.getenv("DATABASE_URL") or (DEFAULT_NEON_URL if os.getenv("RENDER") else DEFAULT_SQLITE_URL)
 DATABASES = {
@@ -101,7 +103,7 @@ if USE_CLOUDINARY:
     # 1) Configurar o SDK do Cloudinary (necessário para CloudinaryField gerar URLs)
     # Opção A: usar CLOUDINARY_URL (cloudinary://API_KEY:API_SECRET@CLOUD_NAME?secure=true)
     if os.getenv('CLOUDINARY_URL'):
-        # O SDK lê CLOUDINARY_URL automaticamente; reforçamos secure=True
+        # O SDK já lê CLOUDINARY_URL automaticamente; reforçamos secure=True
         cloudinary.config(secure=True)
     else:
         # Opção B: variáveis separadas
@@ -112,14 +114,14 @@ if USE_CLOUDINARY:
             secure=True,
         )
 
-    # 2) Config do pacote django-cloudinary-storage (usado se você tiver FileField/ImageField com storage)
+    # 2) Config do pacote django-cloudinary-storage (para FileField/ImageField com storage)
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
         'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
         'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
         'SECURE': True,
     }
-    # Se desejar que uploads "genéricos" (não CloudinaryField) usem Cloudinary como storage:
+    # Se desejar que uploads "genéricos" (não CloudinaryField) usem Cloudinary:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- Auth ----------------
@@ -147,6 +149,17 @@ MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN", "")
 MP_PUBLIC_KEY = os.getenv("MP_PUBLIC_KEY", "")
 MP_WEBHOOK_URL = os.getenv("MP_WEBHOOK_URL", "")
 
+# --------- E-mail ---------
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@example.com")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
 # --------- Logging ---------
 LOGGING = {
     "version": 1,
@@ -157,18 +170,9 @@ LOGGING = {
         "vendas.views": {"handlers": ["console"], "level": "INFO"},
         "mercadopago": {"handlers": ["console"], "level": "WARNING"},
         "django.request": {"handlers": ["console"], "level": "WARNING"},
+        "cloudinary": {"handlers": ["console"], "level": "INFO"},
     },
 }
 
-# --------- E-mail ---------
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_TIMEOUT = 15
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "yarinemanuelle7@gmail.com")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "gxir mcgn edke zgvm")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "YARIN IMPRESSÕES <yarinemanuelle7@gmail.com>")
-SERVER_EMAIL = os.getenv("SERVER_EMAIL", "YARIN IMPRESSÕES <yarinemanuelle7@gmail.com>")
-
+# --------- Site base ---------
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "http://localhost:8000")
