@@ -545,11 +545,6 @@ def _r2_client():
 
 
 def secure_download(request, token):
-    """
-    Gera uma URL pré-assinada (expira em ~2 minutos) para baixar o arquivo
-    privado do bucket da R2. Se R2 não estiver configurado (dev), faz fallback
-    servindo o arquivo localmente.
-    """
     link = get_object_or_404(DownloadLink, token=token)
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
@@ -560,16 +555,24 @@ def secure_download(request, token):
 
     filename = os.path.basename(f.name or "")
 
-    # Se não há configuração S3 (dev), serve do disco
-    if not getattr(settings, "AWS_S3_ENDPOINT_URL", None) or not getattr(settings, "AWS_STORAGE_BUCKET_NAME", None) \
-       or not getattr(settings, "AWS_ACCESS_KEY_ID", None):
+    # Fallback local (dev sem R2)
+    if not getattr(settings, "AWS_S3_ENDPOINT_URL", None) or \
+       not getattr(settings, "AWS_STORAGE_BUCKET_NAME", None) or \
+       not getattr(settings, "AWS_ACCESS_KEY_ID", None):
         try:
             return FileResponse(f.open("rb"), as_attachment=True, filename=filename)
         except Exception:
             raise Http404("Arquivo local não encontrado.")
 
-    # R2: gera URL pré-assinada
+    # R2
     client = _r2_client()
+    # Checa existência para evitar NoSuchKey depois do redirect
+    try:
+        client.head_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=f.name)
+    except Exception:
+        # arquivo não está no bucket (provavelmente nunca foi enviado)
+        raise Http404("Arquivo não encontrado no bucket. Reenvie o arquivo digital deste produto.")
+
     url = client.generate_presigned_url(
         "get_object",
         Params={
@@ -577,12 +580,11 @@ def secure_download(request, token):
             "Key": f.name,
             "ResponseContentDisposition": f'attachment; filename="{filename}"',
         },
-        ExpiresIn=120,  # 2 minutos
+        ExpiresIn=120,
     )
 
     link.download_count += 1
     link.save(update_fields=["download_count"])
-
     return HttpResponseRedirect(url)
 
 

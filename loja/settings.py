@@ -27,7 +27,7 @@ INSTALLED_APPS = [
     'vendas',
 
     # Storage S3-compatível (Cloudflare R2)
-    'storages',
+    'storages',   # pip install django-storages boto3
 ]
 
 # ---------------- Middleware ----------------
@@ -85,7 +85,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # ---------------- Media (Cloudflare R2 via S3) ----------------
-MEDIA_URL = '/media/'      # mantido p/ compat; S3 gera as URLs
+# Estes valores ainda são usados como fallback local em dev
+MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Ativa R2 só quando as envs existirem (dev sem envs usa disco)
@@ -97,33 +98,26 @@ R2_READY = all([
 ])
 
 if R2_READY:
-    AWS_ACCESS_KEY_ID = os.getenv("R2_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.getenv("R2_SECRET")
-    AWS_STORAGE_BUCKET_NAME = os.getenv("R2_BUCKET")  # ex: "vendas"
-    AWS_S3_ENDPOINT_URL = f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
-    AWS_S3_REGION_NAME = "auto"
+    AWS_ACCESS_KEY_ID        = os.getenv("R2_KEY_ID")
+    AWS_SECRET_ACCESS_KEY    = os.getenv("R2_SECRET")
+    AWS_STORAGE_BUCKET_NAME  = os.getenv("R2_BUCKET")  # ex: "vendas"
+    AWS_S3_ENDPOINT_URL      = f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
+    AWS_S3_REGION_NAME       = "auto"
     AWS_S3_SIGNATURE_VERSION = "s3v4"
+    AWS_S3_ADDRESSING_STYLE  = "path"      # importante na R2
 
-    # privados por padrão; usaremos URL assinada
-    AWS_DEFAULT_ACL = None
-    AWS_QUERYSTRING_AUTH = True
-    AWS_S3_FILE_OVERWRITE = False
-    # R2 funciona melhor com addressing style "path" em vários cenários
-    AWS_S3_ADDRESSING_STYLE = "path"
-
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-    # Não sobrescrever arquivos com o mesmo nome
-    AWS_S3_FILE_OVERWRITE = False
-
-    # URLs assinadas (tempo de expiração em segundos)
-    AWS_QUERYSTRING_AUTH = True
-    AWS_QUERYSTRING_EXPIRE = 3600  # 1 hora; pode reduzir (ex.: 300) se quiser
+    # Não sobrescrever, usar URLs assinadas, objetos privados por padrão
+    AWS_S3_FILE_OVERWRITE    = False
+    AWS_QUERYSTRING_AUTH     = True
+    AWS_QUERYSTRING_EXPIRE   = 3600  # 1 hora
+    AWS_DEFAULT_ACL          = None
 
     # (Opcional) Cache do lado do cliente/CDN
     AWS_S3_OBJECT_PARAMETERS = {
         "CacheControl": "max-age=86400",  # 24h
     }
+
+    DEFAULT_FILE_STORAGE     = "storages.backends.s3boto3.S3Boto3Storage"
 
 # ---------------- Auth ----------------
 LOGIN_URL = 'login'
@@ -160,6 +154,8 @@ LOGGING = {
         "vendas.views": {"handlers": ["console"], "level": "INFO"},
         "mercadopago": {"handlers": ["console"], "level": "WARNING"},
         "django.request": {"handlers": ["console"], "level": "WARNING"},
+        "boto3": {"handlers": ["console"], "level": "WARNING"},
+        "botocore": {"handlers": ["console"], "level": "WARNING"},
     },
 }
 
