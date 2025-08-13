@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import dj_database_url  # pip install dj-database-url psycopg2-binary
+import cloudinary       # pip install cloudinary django-cloudinary-storage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,9 +27,14 @@ INSTALLED_APPS = [
 ]
 
 # ========= Cloudinary (ativação condicional) =========
+# Só ativa se tiver CLOUDINARY_URL OU (cloud_name + api_key + api_secret)
 USE_CLOUDINARY = bool(
     os.getenv('CLOUDINARY_URL') or
-    os.getenv('CLOUDINARY_CLOUD_NAME')
+    (
+        os.getenv('CLOUDINARY_CLOUD_NAME') and
+        os.getenv('CLOUDINARY_API_KEY') and
+        os.getenv('CLOUDINARY_API_SECRET')
+    )
 )
 
 if USE_CLOUDINARY:
@@ -83,26 +89,37 @@ USE_I18N = True
 USE_TZ = True
 
 # ---------------- Static & Media ----------------
-STATIC_URL = '/static/'     # IMPORTANTE: barra inicial
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Em dev, ainda deixamos MEDIA local — mas se Cloudinary estiver ativo, ele assume via storage
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # >>> Cloudinary: apenas quando USE_CLOUDINARY = True
 if USE_CLOUDINARY:
-    # Se tiver CLOUDINARY_URL no formato padrão, isso já basta.
-    # (Ex: cloudinary://API_KEY:API_SECRET@CLOUD_NAME)
-    # Se preferir chaves separadas:
+    # 1) Configurar o SDK do Cloudinary (necessário para CloudinaryField gerar URLs)
+    # Opção A: usar CLOUDINARY_URL (cloudinary://API_KEY:API_SECRET@CLOUD_NAME?secure=true)
+    if os.getenv('CLOUDINARY_URL'):
+        # O SDK lê CLOUDINARY_URL automaticamente; reforçamos secure=True
+        cloudinary.config(secure=True)
+    else:
+        # Opção B: variáveis separadas
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+            api_key=os.getenv('CLOUDINARY_API_KEY'),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+            secure=True,
+        )
+
+    # 2) Config do pacote django-cloudinary-storage (usado se você tiver FileField/ImageField com storage)
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
         'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
         'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
-        'SECURE': True,   # gerar URLs https
+        'SECURE': True,
     }
-    # Usaremos Cloudinary para MEDIA (imagens). Para arquivos "raw" ver models.py abaixo.
+    # Se desejar que uploads "genéricos" (não CloudinaryField) usem Cloudinary como storage:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # ---------------- Auth ----------------

@@ -516,14 +516,48 @@ def payment_success(request, order_id):
 
 def secure_download(request, token):
     link = get_object_or_404(DownloadLink, token=token)
+
     if not link.is_valid():
         raise Http404("Link inválido ou expirado.")
-    f = link.order.product.digital_file
-    if not f:
-        raise Http404("Arquivo não encontrado.")
+
+    # Recurso do produto
+    asset = link.order.product.digital_file  # CloudinaryField -> CloudinaryResource ou str
+
+    # CASO 1: se algum dia virar FileField/Storage local, mantemos compatibilidade
+    if hasattr(asset, "open"):
+        filename = os.path.basename(getattr(asset, "name", "arquivo"))
+        link.download_count += 1
+        link.save(update_fields=["download_count"])
+        return FileResponse(asset.open("rb"), as_attachment=True, filename=filename)
+
+    # CASO 2: CloudinaryResource (caminho atual com CloudinaryField)
+    # Precisamos de public_id e do formato (extensão) — para 'raw' é obrigatório.
+    public_id = getattr(asset, "public_id", None) or str(asset)  # CloudinaryResource -> id
+    file_format = getattr(asset, "format", None)
+    if not file_format and "." in public_id:
+        file_format = public_id.rsplit(".", 1)[-1]
+    if not file_format:
+        # último recurso (muitos PDFs/ZIPs já trazem a extensão no public_id)
+        file_format = "pdf"
+
+    # URL assinada e temporária (expira em ~2 minutos)
+    expires_at = int((timezone.now() + timedelta(minutes=2)).timestamp())
+
+    # IMPORTANTE:
+    # - resource_type='raw' (seu arquivo é PDF/ZIP etc)
+    # - type='upload' (você não configurou como 'private'/'authenticated' no upload)
+    signed_url = private_download_url(
+        public_id,
+        file_format,
+        resource_type="raw",
+        type="upload",
+        expires_at=expires_at,
+        attachment=True,  # força download
+    )
+
     link.download_count += 1
     link.save(update_fields=["download_count"])
-    return FileResponse(f.open("rb"), as_attachment=True, filename=f.name.split("/")[-1])
+    return HttpResponseRedirect(signed_url)
 
 @staff_member_required
 def sales_report(request):
