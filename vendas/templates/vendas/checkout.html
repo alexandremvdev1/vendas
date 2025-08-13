@@ -172,7 +172,7 @@
 
 <script>
 (function(){
-  // --- helpers ---
+  // ---------- Helpers ----------
   function onlyDigits(s){ return (s||"").replace(/\D/g, ""); }
 
   function formatCPF(v){
@@ -186,10 +186,9 @@
   // Brasil: (99) 9999-9999 (10d) ou (99) 99999-9999 (11d)
   function formatPhone(v){
     v = onlyDigits(v).slice(0,11);
-    if (v.length <= 2)    return v; // ainda sem parênteses pra não pular cedo
-    if (v.length <= 6)    return v.replace(/(\d{2})(\d+)/, "($1) $2");
-    if (v.length <= 10)   return v.replace(/(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
-    /* 11 dígitos */
+    if (v.length <= 2)  return v; // ainda sem parênteses para não “pular” cedo
+    if (v.length <= 6)  return v.replace(/(\d{2})(\d+)/, "($1) $2");
+    if (v.length <= 10) return v.replace(/(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
     return v.replace(/(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
   }
 
@@ -198,49 +197,67 @@
     if (!input) return;
 
     const apply = ()=>{
-      const raw = input.value;
+      const raw   = input.value;
       const caret = input.selectionStart ?? raw.length;
 
-      // quantos dígitos existem antes do cursor no texto bruto
+      // dígitos antes do cursor no texto atual
       const digitsBefore = raw.slice(0, caret).replace(/\D/g, "").length;
 
       // formata
       const formatted = formatter(raw);
       if (formatted !== input.value) input.value = formatted;
 
-      // posiciona o cursor após a mesma contagem de dígitos
+      // reposiciona o cursor após a mesma contagem de dígitos
       let pos = 0, seen = 0;
       while (pos < formatted.length && seen < digitsBefore){
         if (/\d/.test(formatted.charAt(pos))) seen++;
         pos++;
       }
-      input.setSelectionRange(pos, pos);
+      try { input.setSelectionRange(pos, pos); } catch(_) {}
     };
 
     input.addEventListener("input", apply);
     input.addEventListener("focus", apply);
-    // Paste: deixa o navegador colar e o 'input' acima resolve; só limpamos ao sair
     input.addEventListener("blur", ()=>{ input.value = formatter(input.value); });
-
-    // inicial
-    input.value = formatter(input.value);
+    input.value = formatter(input.value); // inicial
   }
 
-  // aplica máscaras (mantém seus seletores atuais)
+  // ---------- Aplica máscaras ----------
   const $cpf   = document.querySelector('[data-mask="cpf"]')   || document.getElementById('id_cpf');
   const $phone = document.querySelector('[data-mask="phone"]') || document.getElementById('id_phone');
 
   maskWithStableCaret($cpf, formatCPF);
   maskWithStableCaret($phone, formatPhone);
 
-  // teclado numérico no celular
   if ($phone){ $phone.setAttribute('inputmode','numeric'); $phone.setAttribute('autocomplete','tel'); }
-  if ($cpf){ $cpf.setAttribute('inputmode','numeric'); }
+  if ($cpf){   $cpf.setAttribute('inputmode','numeric'); }
 
-  // --- o resto do seu JS (botões / lock) permanece igual ---
-  const form   = document.getElementById('checkout-form');
-  const btnPix = document.getElementById('btn-pix');
-  const btnCard= document.getElementById('btn-card');
+  // ---------- Pagamento: sempre enviar o método escolhido ----------
+  const form    = document.getElementById('checkout-form');
+  const btnPix  = document.getElementById('btn-pix');
+  const btnCard = document.getElementById('btn-card');
+
+  // Removemos o atributo name dos botões de submit para evitar conflito
+  // (o valor será enviado apenas via hidden).
+  btnPix  && btnPix.removeAttribute('name');
+  btnCard && btnCard.removeAttribute('name');
+
+  // Hidden único que carrega o método escolhido
+  let methodInput = form ? form.querySelector('input[name="pay_method"]') : null;
+  if (form && !methodInput){
+    methodInput = document.createElement('input');
+    methodInput.type  = 'hidden';
+    methodInput.name  = 'pay_method';
+    methodInput.value = ''; // será definido no clique
+    form.appendChild(methodInput);
+  }
+
+  let lastChosen = ''; // guarda a última escolha
+
+  function choose(method){
+    lastChosen = method;
+    if (methodInput) methodInput.value = method;
+  }
 
   function lockBtn(btn){
     if (!btn) return;
@@ -250,31 +267,24 @@
     if (sp) sp.classList.remove('d-none');
     if (tx) tx.textContent = 'Processando...';
   }
-  if (form){
-    form.addEventListener('submit', ()=>{
-      const active = document.activeElement;
-      if (active === btnPix)  lockBtn(btnPix);
-      if (active === btnCard) lockBtn(btnCard);
-      if (active !== btnPix && active !== btnCard){ lockBtn(btnPix); lockBtn(btnCard); }
-    });
-  }
 
-  function submitWith(method){
-    if (!form) return;
-    const hidden = document.createElement('input');
-    hidden.type = 'hidden';
-    hidden.name = 'pay_method';
-    hidden.value = method;
-    form.appendChild(hidden);
-    lockBtn(method === 'pix' ? btnPix : btnCard);
-    form.submit();
-  }
+  // Clique nos botões principais
+  btnPix  && btnPix.addEventListener('click', ()=> choose('pix'));
+  btnCard && btnCard.addEventListener('click', ()=> choose('card'));
+
+  // Sticky (mobile)
   const stickyPix  = document.getElementById('sticky-pix');
   const stickyCard = document.getElementById('sticky-card');
-  if (stickyPix)  stickyPix.addEventListener('click', ()=> submitWith('pix'));
-  if (stickyCard) stickyCard.addEventListener('click', ()=> submitWith('card'));
+
+  stickyPix  && stickyPix.addEventListener('click', ()=>{ choose('pix');  lockBtn(btnPix);  form && form.submit(); });
+  stickyCard && stickyCard.addEventListener('click', ()=>{ choose('card'); lockBtn(btnCard); form && form.submit(); });
+
+  // No submit (Enter no teclado ou clique): se nada escolhido, assume Pix.
+  if (form){
+    form.addEventListener('submit', ()=>{
+      if (!methodInput.value) choose('pix');
+      lockBtn(lastChosen === 'card' ? btnCard : btnPix);
+    });
+  }
 })();
 </script>
-
-</body>
-</html>
