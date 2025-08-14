@@ -15,7 +15,7 @@
 <body>
 <nav class="navbar navbar-dark" style="background:linear-gradient(90deg,#0b1020,#111a3a);">
   <div class="container-fluid">
-    <a class="navbar-brand fw-bold" href="{% url 'home' %}">Loja Digital</a>
+    <a class="navbar-brand fw-bold" href="{% url 'home' %}">YARIN IMPRESSÕES E PERSONALIZAÇÃOS</a>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-light btn-sm" href="{% url 'home' %}">Catálogo</a>
       <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
@@ -139,7 +139,7 @@
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
                   <button class="btn btn-sm btn-outline-dark" {% if o.status != 'pending' %}disabled{% endif %}>
-                    Lembrar por e-mail
+                    E-mail
                   </button>
                 </form>
 
