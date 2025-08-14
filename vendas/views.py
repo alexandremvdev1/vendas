@@ -452,6 +452,11 @@ def checkout_view(request, slug, token):
     """
     product = get_object_or_404(Product, slug=slug, checkout_token=token, active=True)
 
+    # Carrega a empresa ativa para exibir no rodapé (centralizado no template)
+    company = Company.objects.filter(active=True).order_by("-created_at").only(
+        "id", "trade_name", "corporate_name", "cnpj", "address", "phone_e164", "logo"
+    ).first()
+
     if request.method == "POST":
         form = CheckoutForm(request.POST)
         if form.is_valid():
@@ -477,12 +482,14 @@ def checkout_view(request, slug, token):
             if changed:
                 customer.save()
 
-            # método escolhido
-            pay_method = request.POST.get("pay_method", "pix")
+            # método escolhido (default Pix)
+            pay_method = (request.POST.get("pay_method") or "pix").lower().strip()
             payment_type = "card" if pay_method == "card" else "pix"
 
             # preço vigente no momento do checkout (considera promoção)
-            unit_price = _effective_price(product)
+            unit_price = _effective_price(product)  # deve retornar Decimal
+            if not isinstance(unit_price, Decimal):
+                unit_price = Decimal(str(unit_price))
 
             # Reusa pedido pendente se já houver, senão cria novo
             order, created = get_or_reuse_pending_order(product, customer, payment_type)
@@ -502,6 +509,7 @@ def checkout_view(request, slug, token):
                     logger.warning("Falha ao enviar e-mail de pedido criado (order %s): %s", order.id, e)
 
             if payment_type == "card":
+                # redireciona para o Checkout Pro do Mercado Pago
                 return redirect("pay_card", order_id=order.id)
 
             # Pix: cria pagamento apenas se ainda não existir payment_id
@@ -509,16 +517,35 @@ def checkout_view(request, slug, token):
                 create_pix_payment(product, customer, order, request)
             except Exception as e:
                 logger.exception("Erro ao criar pagamento Pix (order %s): %s", order.id, e)
-                return render(request, "vendas/pending.html", {
-                    "order": order,
-                    "error": "Não foi possível iniciar o Pix agora. Verifique o token do MP e os logs."
-                })
+                return render(
+                    request,
+                    "vendas/pending.html",
+                    {
+                        "order": order,
+                        "product": product,
+                        "company": company,  # <-- inclui a empresa no contexto
+                        "error": "Não foi possível iniciar o Pix agora. Verifique o token do MP e os logs.",
+                    },
+                )
 
             return redirect("payment_pending", order_id=order.id)
-    else:
-        form = CheckoutForm()
 
-    return render(request, "vendas/checkout.html", {"product": product, "form": form})
+        # form inválido → reexibe com erros + outros produtos
+        others = Product.objects.filter(active=True).exclude(pk=product.pk).order_by("-created_at")[:12]
+        return render(
+            request,
+            "vendas/checkout.html",
+            {"product": product, "form": form, "others": others, "company": company},  # <-- inclui company
+        )
+
+    # GET → formulário em branco + outros produtos (para o carrossel)
+    form = CheckoutForm()
+    others = Product.objects.filter(active=True).exclude(pk=product.pk).order_by("-created_at")[:12]
+    return render(
+        request,
+        "vendas/checkout.html",
+        {"product": product, "form": form, "others": others, "company": company},  # <-- inclui company
+    )
 
 
 def payment_pending(request, order_id):

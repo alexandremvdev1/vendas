@@ -6,37 +6,112 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    :root{ --brand:#2563eb; --ink:#0f172a; --muted:#475569; --ring:rgba(37,99,235,.15); }
-    body{background:#f6f8fb;}
-    .nav-lite{background:linear-gradient(90deg,#0b1020,#111a3a);}
-    .nav-lite .navbar-brand{font-weight:700; letter-spacing:.2px;}
-    .hero{
-      background: radial-gradient(1200px 600px at -10% -10%, rgba(37, 99, 235, 0.18), transparent),
-                  radial-gradient(1200px 600px at 110% -10%, rgba(16, 185, 129, 0.14), transparent),
-                  linear-gradient(180deg,#0b1020,#0f172a);
-      color:#fff;
+    :root{
+      --brand:#2563eb; --ink:#0f172a; --muted:#475569; --ring:rgba(37,99,235,.15);
+      --bg-deep:#0b1020; --bg-deeper:#0a0f1f;
     }
-    .card-clean{border:none; box-shadow:0 10px 24px rgba(17,24,39,.08);}
+    body{background:#f6f8fb; color:var(--ink);}
+
+    /* ---------- NAV ---------- */
+    .nav-lite{
+      background:
+        radial-gradient(900px 400px at -5% -50%, rgba(37,99,235,.25), transparent),
+        radial-gradient(900px 400px at 105% -50%, rgba(16,185,129,.18), transparent),
+        linear-gradient(90deg, var(--bg-deep), var(--bg-deeper));
+      box-shadow:0 6px 20px rgba(2,6,23,.35);
+    }
+    .navbar-brand{font-weight:800; letter-spacing:.2px; color:#fff;}
+    .brand-logo{
+      height:36px; width:auto; object-fit:contain; border-radius:.5rem;
+      background:rgba(255,255,255,.06); padding:.25rem .4rem;
+      box-shadow:0 6px 18px rgba(0,0,0,.25);
+    }
+    .brand-text{color:#fff;}
+    .nav-actions .btn{ --bs-btn-font-weight:600; border-radius:.6rem; }
+    .nav-actions .link-light{opacity:.9}
+    .nav-actions .link-light:hover{opacity:1}
+
+    /* ---------- HERO (mínimo) ---------- */
+    .hero{
+      position:relative; overflow:hidden; color:#e5edff;
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(37, 99, 235, 0.18), transparent),
+        radial-gradient(1200px 600px at 110% -10%, rgba(16, 185, 129, 0.14), transparent),
+        linear-gradient(180deg,#0b1020,#0f172a);
+      border-bottom:1px solid rgba(255,255,255,.08);
+      text-align:center;
+    }
+    .hero-title{
+      color:#fff; font-weight:900; letter-spacing:.2px;
+      font-size:clamp(1.25rem, 1rem + 2.2vw, 2.25rem);
+      margin: .25rem 0 .25rem 0;
+    }
+    .hero-sub{color:#c9d4ff; margin:0}
+
+    /* ---------- Cards / inputs ---------- */
+    .card-clean{border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:1rem;}
     .field .form-control{padding:.7rem .9rem; border-radius:.7rem; border-color:#e2e8f0;}
     .field .form-control:focus{box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd;}
     .thumb-fallback{height:220px; background:#eef2f7; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:.95rem;}
     .product-title{font-weight:800; line-height:1.2; color:var(--ink); font-size:clamp(1.25rem, 1.2rem + 1vw, 2rem); margin-top:.75rem;}
     .price-display{font-weight:900; color:var(--ink); font-size:clamp(1.6rem, 1.2rem + 2vw, 2.4rem); letter-spacing:.3px; margin:.25rem 0 1rem 0;}
-    .sticky-cta{position:sticky; bottom:0; z-index:50; background:#ffffffeb; backdrop-filter:saturate(1.3) blur(4px); border-top:1px solid #e5e7eb;}
-    @media (min-width:768px){ .sticky-cta{display:none;} }
     .spinner{display:inline-block; width:1rem; height:1rem; border:.15em solid #fff; border-right-color:transparent; border-radius:50%; animation: spin .6s linear infinite; vertical-align:-2px;}
     @keyframes spin{to{transform:rotate(360deg)}}
-    /* Promo styling */
     .promo-badge{background:#ef4444;}
     .old-price{color:#64748b;}
+
+    /* ---------- Carrossel ---------- */
+    .more-wrap{position:relative;}
+    .more-row{display:flex; gap:1rem; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:.25rem; -ms-overflow-style:none; scrollbar-width:none;}
+    .more-row::-webkit-scrollbar{display:none;}
+    .mini-card{flex:0 0 240px; scroll-snap-align:start; border:none; box-shadow:0 6px 18px rgba(17,24,39,.08); border-radius:.9rem;}
+    .mini-img{aspect-ratio:16/10; object-fit:cover; width:100%; border-top-left-radius:.9rem; border-top-right-radius:.9rem;}
+    .more-nav{position:absolute; top:50%; transform:translateY(-50%); z-index:5; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,.15); background:#fff;}
+    .more-prev{left:-.5rem;} .more-next{right:-.5rem;}
+    @media (max-width:576px){ .mini-card{flex-basis: 78%;} .more-prev{left:.25rem;} .more-next{right:.25rem;} }
+
+    /* Evita rolagem lateral */
+    html, body { max-width:100%; overflow-x:hidden; }
+
+    /* ---------- Rodapé ---------- */
+    .contact-footer{ background:#0b1020; color:#e5e7eb; border-top:1px solid #1f2937; }
+    .contact-footer a{ color:#93c5fd; text-decoration:none; }
+    .contact-footer a:hover{ text-decoration:underline; }
+    .contact-footer .brand{ font-weight:800; letter-spacing:.3px; color:#fff; }
+    .contact-footer .muted{ color:#9aa3b2; }
+    .contact-footer .logo{
+      max-height:48px; width:auto; object-fit:contain; margin-bottom:.5rem;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
+    }
+    /* Selos de confiança no rodapé */
+    .trust{
+      display:grid; gap:.5rem;
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius: .9rem; padding:.9rem 1rem;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .trust .item{
+      display:flex; align-items:center; gap:.6rem; font-weight:600; color:#e7eeff; justify-content:center;
+    }
+    .trust .ico{width:22px; height:22px; display:inline-grid; place-items:center;
+      border-radius:50%; background:rgba(255,255,255,.12); font-size:.9rem;}
   </style>
 </head>
 <body>
-<nav class="navbar nav-lite navbar-dark">
+
+<!-- ========= NAV ========= -->
+<nav class="navbar nav-lite navbar-dark py-2">
   <div class="container">
-    <div class="d-none d-md-flex align-items-center gap-3">
+    
+
+    <div class="nav-actions d-none d-md-flex align-items-center gap-3 ms-auto">
+      {% if company and company.phone_e164 %}
+        <a class="link-light small text-decoration-none" href="tel:{{ company.phone_e164 }}">📞 {{ company.phone_display }}</a>
+        <a class="btn btn-success btn-sm" href="{{ company.whatsapp_link }}" target="_blank" rel="noopener">WhatsApp</a>
+      {% endif %}
       {% if user.is_authenticated %}
-        {% if user.is_staff %}<a class="link-light text-decoration-none" href="{% url 'sales_report' %}">Relatório</a>{% endif %}
+        {% if user.is_staff %}<a class="link-light small text-decoration-none" href="{% url 'sales_report' %}">Relatório</a>{% endif %}
         <span class="text-light small">Olá, {{ user.username }}</span>
         <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Sair</a>
       {% else %}
@@ -46,10 +121,11 @@
   </div>
 </nav>
 
+<!-- ========= HERO (apenas títulos) ========= -->
 <header class="hero py-4 py-md-5">
   <div class="container">
-    <h1 class="h5 mb-1">Checkout</h1>
-    <p class="mb-0 text-light-emphasis">Preencha seus dados para gerar o pagamento.</p>
+    <h1 class="hero-title">Checkout</h1>
+    <p class="hero-sub">Finalize sua compra</p>
   </div>
 </header>
 
@@ -66,12 +142,9 @@
         <div class="card-body">
           <h2 class="product-title">{{ product.title }}</h2>
 
-          {# --- Preço com suporte à promoção (usa has_promo e price_to_charge) --- #}
           {% if product.has_promo %}
             <span class="badge promo-badge text-white mb-2">PREÇO PROMOCIONAL</span>
-            <div class="old-price small">
-              <del>R$ {{ product.price|floatformat:2 }}</del>
-            </div>
+            <div class="old-price small"><del>R$ {{ product.price|floatformat:2 }}</del></div>
             <div class="price-display">R$ {{ product.price_to_charge|floatformat:2 }}</div>
           {% else %}
             <div class="price-display">R$ {{ product.price|floatformat:2 }}</div>
@@ -82,7 +155,6 @@
 
           {% if product.video_url %}
             <div class="ratio ratio-16x9 rounded overflow-hidden">
-              <!-- usa a URL de embed gerada no model -->
               <iframe
                 src="{{ product.video_embed_url }}"
                 title="Vídeo do produto"
@@ -134,11 +206,11 @@
           </div>
 
           <div class="d-grid gap-2 mt-3">
-            <button class="btn btn-success py-2" type="submit" name="pay_method" value="pix" id="btn-pix" aria-label="Pagar com Pix">
+            <button class="btn btn-success py-2" type="submit" id="btn-pix" aria-label="Pagar com Pix">
               <span class="btn-text">Pagar com Pix</span>
               <span class="spinner ms-2 d-none" aria-hidden="true"></span>
             </button>
-            <button class="btn btn-primary py-2" type="submit" name="pay_method" value="card" id="btn-card" aria-label="Pagar com Cartão">
+            <button class="btn btn-primary py-2" type="submit" id="btn-card" aria-label="Pagar com Cartão">
               <span class="btn-text">Pagar com Cartão</span>
               <span class="spinner ms-2 d-none" aria-hidden="true"></span>
             </button>
@@ -151,30 +223,94 @@
       </div>
     </div>
   </div>
+
+  {% if others %}
+  <section class="mt-5 pt-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h2 class="h5 m-0">Outros produtos</h2>
+      <a class="small text-decoration-none" href="{% url 'catalog' %}">Ver todos</a>
+    </div>
+
+    <div class="more-wrap">
+      <button type="button" class="btn more-nav more-prev" aria-label="Anterior">‹</button>
+      <div id="moreRow" class="more-row">
+        {% for p in others %}
+          {% with eff=p.price_to_charge old=p.price %}
+          <div class="card mini-card">
+            {% if p.image %}
+              <img class="mini-img" src="{{ p.image.url }}" alt="{{ p.title }}">
+            {% else %}
+              <div class="mini-img d-flex align-items-center justify-content-center" style="background:#eef2f7;">
+                <span class="text-muted small">Sem imagem</span>
+              </div>
+            {% endif %}
+            <div class="card-body p-2">
+              <div class="small fw-semibold text-truncate" title="{{ p.title }}">{{ p.title }}</div>
+              {% if p.has_promo %}
+                <div class="small text-muted"><del>R$ {{ old|floatformat:2 }}</del></div>
+              {% endif %}
+              <div class="fw-bold">R$ {{ eff|floatformat:2 }}</div>
+              <a class="btn btn-sm btn-primary w-100 mt-2" href="{{ p.get_checkout_url }}">Comprar</a>
+            </div>
+          </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+      <button type="button" class="btn more-nav more-next" aria-label="Próximo">›</button>
+    </div>
+  </section>
+  {% endif %}
 </main>
 
-<!-- Barra fixa (mobile): dois botões enviando o mesmo form -->
-<div class="sticky-cta px-3 py-3 d-flex d-md-none align-items-center justify-content-between gap-2">
-  <div>
-    <div class="small text-muted lh-1">Total</div>
-    {% if product.has_promo %}
-      <div class="small old-price"><del>R$ {{ product.price|floatformat:2 }}</del></div>
-      <div class="fw-bold fs-5">R$ {{ product.price_to_charge|floatformat:2 }}</div>
+<!-- ===== Rodapé (Company + selos) ===== -->
+<footer class="contact-footer py-4 mt-5 text-center">
+  <div class="container">
+    {% if company %}
+      <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+          {% if company.logo_url %}
+            <img class="logo" src="{{ company.logo_url }}" alt="{{ company.trade_name|default:company.corporate_name }}">
+          {% endif %}
+          <div class="brand">{{ company.trade_name|default:company.corporate_name }}</div>
+          {% if company.cnpj %}<div class="muted small">CNPJ: {{ company.cnpj }}</div>{% endif %}
+          {% if company.address %}<div class="muted small mt-1">{{ company.address }}</div>{% endif %}
+          {% if company.phone_e164 %}
+            <div class="mt-2 small">
+              <strong>Telefone:</strong>
+              <a href="tel:{{ company.phone_e164 }}">{{ company.phone_display }}</a>
+              &nbsp;•&nbsp;
+              <strong>WhatsApp:</strong>
+              <a href="{{ company.whatsapp_link }}" target="_blank" rel="noopener">Falar no WhatsApp</a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Selos no rodapé -->
+      <div class="row justify-content-center mt-3">
+        <div class="col-12 col-lg-8">
+          <div class="trust">
+            <div class="item"><span class="ico">🔒</span> Compra 100% segura</div>
+            <div class="item"><span class="ico">⚡</span> Entrega automática</div>
+            <div class="item"><span class="ico">💬</span> Suporte rápido</div>
+          </div>
+        </div>
+      </div>
     {% else %}
-      <div class="fw-bold fs-5">R$ {{ product.price|floatformat:2 }}</div>
+      <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+          <div class="brand">Loja Digital</div>
+          <div class="muted small">Cadastre uma empresa ativa para exibir os dados aqui.</div>
+        </div>
+      </div>
     {% endif %}
   </div>
-  <div class="d-flex gap-2">
-    <button class="btn btn-success" type="button" id="sticky-pix" aria-label="Pagar com Pix">Pix</button>
-    <button class="btn btn-primary" type="button" id="sticky-card" aria-label="Pagar com Cartão">Cartão</button>
-  </div>
-</div>
+</footer>
 
 <script>
 (function(){
-  // ---------- Helpers ----------
+  // ---------- Helpers de máscara ----------
   function onlyDigits(s){ return (s||"").replace(/\D/g, ""); }
-
   function formatCPF(v){
     v = onlyDigits(v).slice(0,11);
     if (v.length <= 3)  return v;
@@ -182,83 +318,59 @@
     if (v.length <= 9)  return v.replace(/(\d{3})(\d{3})(\d+)/, "$1.$2.$3");
     return v.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2}).*/, "$1.$2.$3-$4");
   }
-
-  // Brasil: (99) 9999-9999 (10d) ou (99) 99999-9999 (11d)
   function formatPhone(v){
     v = onlyDigits(v).slice(0,11);
-    if (v.length <= 2)  return v; // ainda sem parênteses para não “pular” cedo
+    if (v.length <= 2)  return v;
     if (v.length <= 6)  return v.replace(/(\d{2})(\d+)/, "($1) $2");
     if (v.length <= 10) return v.replace(/(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
     return v.replace(/(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
   }
-
-  // Mantém o cursor após a MESMA quantidade de dígitos que existiam antes
   function maskWithStableCaret(input, formatter){
     if (!input) return;
-
     const apply = ()=>{
       const raw   = input.value;
       const caret = input.selectionStart ?? raw.length;
-
-      // dígitos antes do cursor no texto atual
       const digitsBefore = raw.slice(0, caret).replace(/\D/g, "").length;
-
-      // formata
       const formatted = formatter(raw);
       if (formatted !== input.value) input.value = formatted;
-
-      // reposiciona o cursor após a mesma contagem de dígitos
-      let pos = 0, seen = 0;
+      let pos=0, seen=0;
       while (pos < formatted.length && seen < digitsBefore){
         if (/\d/.test(formatted.charAt(pos))) seen++;
         pos++;
       }
-      try { input.setSelectionRange(pos, pos); } catch(_) {}
+      try{ input.setSelectionRange(pos,pos);}catch(_){}
     };
-
     input.addEventListener("input", apply);
     input.addEventListener("focus", apply);
     input.addEventListener("blur", ()=>{ input.value = formatter(input.value); });
-    input.value = formatter(input.value); // inicial
+    input.value = formatter(input.value);
   }
 
-  // ---------- Aplica máscaras ----------
-  const $cpf   = document.querySelector('[data-mask="cpf"]')   || document.getElementById('id_cpf');
-  const $phone = document.querySelector('[data-mask="phone"]') || document.getElementById('id_phone');
-
-  maskWithStableCaret($cpf, formatCPF);
-  maskWithStableCaret($phone, formatPhone);
-
-  if ($phone){ $phone.setAttribute('inputmode','numeric'); $phone.setAttribute('autocomplete','tel'); }
-  if ($cpf){   $cpf.setAttribute('inputmode','numeric'); }
-
-  // ---------- Pagamento: sempre enviar o método escolhido ----------
   const form    = document.getElementById('checkout-form');
   const btnPix  = document.getElementById('btn-pix');
   const btnCard = document.getElementById('btn-card');
 
-  // Removemos o atributo name dos botões de submit para evitar conflito
-  // (o valor será enviado apenas via hidden).
+  const $cpf   = document.querySelector('[data-mask="cpf"]')   || document.getElementById('id_cpf');
+  const $phone = document.querySelector('[data-mask="phone"]') || document.getElementById('id_phone');
+  maskWithStableCaret($cpf, formatCPF);
+  maskWithStableCaret($phone, formatPhone);
+  if ($phone){ $phone.setAttribute('inputmode','numeric'); $phone.setAttribute('autocomplete','tel'); }
+  if ($cpf){   $cpf.setAttribute('inputmode','numeric'); }
+
+  // ---------- Método de pagamento ----------
   btnPix  && btnPix.removeAttribute('name');
   btnCard && btnCard.removeAttribute('name');
 
-  // Hidden único que carrega o método escolhido
   let methodInput = form ? form.querySelector('input[name="pay_method"]') : null;
   if (form && !methodInput){
     methodInput = document.createElement('input');
     methodInput.type  = 'hidden';
     methodInput.name  = 'pay_method';
-    methodInput.value = ''; // será definido no clique
+    methodInput.value = '';
     form.appendChild(methodInput);
   }
-
-  let lastChosen = ''; // guarda a última escolha
-
-  function choose(method){
-    lastChosen = method;
-    if (methodInput) methodInput.value = method;
-  }
-
+  let lastChosen = '';
+  function choose(method){ lastChosen = method; if (methodInput) methodInput.value = method; }
   function lockBtn(btn){
     if (!btn) return;
     btn.disabled = true;
@@ -267,24 +379,29 @@
     if (sp) sp.classList.remove('d-none');
     if (tx) tx.textContent = 'Processando...';
   }
-
-  // Clique nos botões principais
   btnPix  && btnPix.addEventListener('click', ()=> choose('pix'));
   btnCard && btnCard.addEventListener('click', ()=> choose('card'));
 
-  // Sticky (mobile)
-  const stickyPix  = document.getElementById('sticky-pix');
-  const stickyCard = document.getElementById('sticky-card');
-
-  stickyPix  && stickyPix.addEventListener('click', ()=>{ choose('pix');  lockBtn(btnPix);  form && form.submit(); });
-  stickyCard && stickyCard.addEventListener('click', ()=>{ choose('card'); lockBtn(btnCard); form && form.submit(); });
-
-  // No submit (Enter no teclado ou clique): se nada escolhido, assume Pix.
   if (form){
     form.addEventListener('submit', ()=>{
-      if (!methodInput.value) choose('pix');
+      if (!methodInput.value) choose('pix'); // padrão
       lockBtn(lastChosen === 'card' ? btnCard : btnPix);
     });
   }
+
+  // ---------- Carrossel ----------
+  const row  = document.getElementById('moreRow');
+  const prev = document.querySelector('.more-prev');
+  const next = document.querySelector('.more-next');
+  function scrollByCard(dir){
+    if (!row) return;
+    const card = row.querySelector('.mini-card');
+    const delta = card ? (card.getBoundingClientRect().width + 16) : 260;
+    row.scrollBy({ left: dir * delta, behavior: 'smooth' });
+  }
+  prev && prev.addEventListener('click', ()=> scrollByCard(-1));
+  next && next.addEventListener('click', ()=> scrollByCard(1));
 })();
 </script>
+</body>
+</html>
