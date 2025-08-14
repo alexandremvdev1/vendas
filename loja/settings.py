@@ -150,3 +150,31 @@ LOGGING = {
 
 # --------- Site base ---------
 SITE_BASE_URL = os.getenv("SITE_BASE_URL", "http://localhost:8000")
+
+# --------- E-mail (SMTP) ---------
+import os
+
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")          # ex: sua-conta@gmail.com
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")  # Gmail App Password (16 chars)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", (EMAIL_HOST_USER or "no-reply@localhost"))
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
+EMAIL_SUBJECT_PREFIX = os.getenv("EMAIL_SUBJECT_PREFIX", "[Loja] ")
+
+# Se estiver em desenvolvimento SEM credenciais, usa console para não quebrar nada
+EMAIL_CONFIGURED = bool(EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+if DEBUG and not EMAIL_CONFIGURED and os.getenv("FORCE_SMTP", "").lower() != "true":
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Acrescenta logger de e-mail mantendo o LOGGING existente
+try:
+    LOGGING["loggers"]["django.core.mail"] = {
+        "handlers": ["console"],
+        "level": "DEBUG",
+    }
+except Exception:
+    pass
