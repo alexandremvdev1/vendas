@@ -28,4 +28,5 @@ urlpatterns = [
     path("relatorios/vendas/", views.sales_report, name="sales_report"),
     path("pedidos/", views.orders_list, name="orders_list"),
     path("pedidos/<int:order_id>/lembrar/", views.order_send_reminder, name="order_send_reminder"),
+    path("m/dashboard/", views.mobile_dashboard, name="mobile_dashboard"),
 ]

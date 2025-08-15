@@ -54,6 +54,7 @@
     .btn.btn-sm, .btn-sm{ font-size:.8rem; padding:.3rem .5rem; }
     .badge-discount{ font-weight:700; }
   </style>
+  
 </head>
 <body>
 
@@ -62,10 +63,11 @@
     <a class="navbar-brand fw-bold" href="{% url 'home' %}">YLA Criativa</a>
 
     {% url 'sales_report' as sales_url %}
+    {% url 'mobile_dashboard' as mobile_url %}
     <div class="d-flex align-items-center gap-2 ms-auto">
       {% if user.is_authenticated and user.is_staff and sales_url %}
         <a class="btn btn-sm btn-outline-light" href="{{ sales_url }}">Relatório</a>
-        <!-- ABRE EM NOVA ABA -->
+        <!-- abre em nova aba -->
         <a class="btn btn-sm btn-outline-light"
            href="{% url 'admin:vendas_product_add' %}"
            target="_blank" rel="noopener">+ Produto</a>
@@ -74,6 +76,11 @@
       {% if user.is_authenticated and user.is_staff %}
         <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
       {% endif %}
+
+      <!-- NOVO: botão para o Dashboard Mobile -->
+      <a class="btn btn-sm btn-warning"
+         href="{{ mobile_url }}"
+         target="_blank" rel="noopener">📊 Dashboard Mobile</a>
 
       {% if user.is_authenticated %}
         <span class="text-light small d-none d-md-inline">Olá, {{ user.username }}</span>
@@ -84,6 +91,7 @@
     </div>
   </div>
 </nav>
+
 
 <main class="container py-3 py-lg-4">
   <!-- KPIs -->

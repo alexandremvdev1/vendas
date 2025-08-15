@@ -938,3 +938,104 @@ def order_send_reminder(request, order_id):
         messages.error(request, "Erro ao enviar e-mail de lembrete.")
 
     return redirect(next_url)
+
+# vendas/views.py
+from datetime import timedelta, date
+from collections import defaultdict
+
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncDate
+from django.utils import timezone
+from django.shortcuts import render
+
+from .models import Order, Product
+
+def mobile_dashboard(request):
+    today = timezone.localdate()
+    days = int(request.GET.get("days", 7))  # padrão: últimos 7 dias (você pode mudar p/ 14)
+    start = today - timedelta(days=days-1)
+
+    # base de datas (garante zeros)
+    calendar = [start + timedelta(days=i) for i in range(days)]
+    idx = {d: i for i, d in enumerate(calendar)}
+
+    revenue = [0.0] * days
+    orders  = [0]   * days
+
+    # vendas por dia (pagos)
+    daily = (
+        Order.objects
+        .filter(status="paid", created_at__date__gte=start, created_at__date__lte=today)
+        .annotate(d=TruncDate("created_at"))
+        .values("d")
+        .annotate(revenue=Sum("amount"), num=Count("id"))
+        .order_by("d")
+    )
+    for row in daily:
+        d = row["d"]
+        if d in idx:
+            i = idx[d]
+            revenue[i] = float(row["revenue"] or 0)
+            orders[i]  = int(row["num"] or 0)
+
+    labels = [d.strftime("%d/%m") for d in calendar]
+
+    # KPIs de hoje
+    today_qs = Order.objects.filter(status="paid", created_at__date=today)
+    kpi_today_revenue = float(today_qs.aggregate(s=Sum("amount"))["s"] or 0)
+    kpi_today_orders  = int(today_qs.count() or 0)
+    kpi_today_ticket  = (kpi_today_revenue / kpi_today_orders) if kpi_today_orders else 0.0
+
+    # mix por forma de pagamento (últimos N dias)
+    mix_qs = (
+        Order.objects
+        .filter(status="paid", created_at__date__gte=start, created_at__date__lte=today)
+        .values("payment_type")
+        .annotate(num=Count("id"), revenue=Sum("amount"))
+        .order_by("-revenue")
+    )
+    mix_labels = []
+    mix_values = []
+    for r in mix_qs:
+        mix_labels.append("Pix" if r["payment_type"] == "pix" else "Cartão")
+        mix_values.append(float(r["revenue"] or 0))
+
+    # top produtos por receita (últimos 30 dias)
+    last30 = today - timedelta(days=29)
+    top_qs = (
+        Order.objects
+        .filter(status="paid", created_at__date__gte=last30, created_at__date__lte=today)
+        .values("product__title")
+        .annotate(qtd=Count("id"), receita=Sum("amount"))
+        .order_by("-receita")[:8]
+    )
+    top_products = [{
+        "title": r["product__title"],
+        "qtd": int(r["qtd"] or 0),
+        "receita": float(r["receita"] or 0),
+    } for r in top_qs]
+
+    context = {
+        # KPIs
+        "kpi_today_revenue": kpi_today_revenue,
+        "kpi_today_orders":  kpi_today_orders,
+        "kpi_today_ticket":  round(kpi_today_ticket, 2),
+
+        # séries
+        "labels": labels,
+        "revenue": revenue,
+        "orders": orders,
+
+        # mix
+        "mix_labels": mix_labels,
+        "mix_values": mix_values,
+
+        # top
+        "top_products": top_products,
+
+        # range exibido
+        "days": days,
+        "start": start,
+        "today": today,
+    }
+    return render(request, "vendas/mobile_dashboard.html", context)

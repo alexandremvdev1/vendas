@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard (Mobile) • Vendas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --bg:#0b1020; --bg2:#111a3a;
+      --ring:rgba(37,99,235,.18); --brand:#2563eb; --ok:#16a34a; --warn:#f59e0b;
+    }
+    html, body { height:100%; }
+    body{ background:#f6f8fb; color:var(--ink); }
+
+    /* Topbar enxuta */
+    .topbar{
+      position: sticky; top:0; z-index:1000;
+      background:linear-gradient(90deg,var(--bg),var(--bg2));
+      color:#fff; box-shadow:0 6px 16px rgba(2,6,23,.35);
+    }
+    .topbar .brand{ font-weight:800; letter-spacing:.2px; }
+
+    /* KPIs mobile: cards pequenos 2 colunas */
+    .kpi { background:#fff; border:1px solid #e5e7eb; border-radius:.9rem; padding:.75rem .9rem; }
+    .kpi .label{ font-size:.78rem; color:var(--muted); }
+    .kpi .value{ font-size:1.1rem; font-weight:800; }
+
+    /* Cards brancos com sombra */
+    .card-clean{ background:#fff; border:none; border-radius:1rem; box-shadow:0 10px 20px rgba(17,24,39,.08); }
+    .card-clean .card-header{ background:transparent; border-bottom:1px solid #eef2f7; }
+    .card-clean .title{ font-size:.95rem; font-weight:800; margin:0; }
+
+    /* Botões pequenos */
+    .btn-sm, .btn { font-size:.92rem; }
+
+    /* Bottom nav (tab bar) */
+    .tabbar{
+      position: sticky; bottom:0; z-index:1000; background:#fff; border-top:1px solid #e5e7eb;
+    }
+    .tabbar .nav-link{ padding:.5rem .25rem; font-size:.8rem; color:#334155;}
+    .tabbar .nav-link.active{ color:#0f172a; font-weight:700; }
+
+    /* Gráficos ocupam largura total sem sobras */
+    .chart-wrap{ position:relative; width:100%; }
+  </style>
+</head>
+<body>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="container-fluid">
+    <div class="d-flex align-items-center justify-content-between py-2">
+      <div class="brand">Dashboard Mobile</div>
+      <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-sm btn-outline-light" href="{% url 'home' %}">Catálogo</a>
+        {% if user.is_authenticated %}
+          <a class="btn btn-sm btn-light" href="{% url 'logout' %}">Sair</a>
+        {% else %}
+          <a class="btn btn-sm btn-light" href="{% url 'login' %}">Entrar</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container py-3">
+
+  <!-- Faixa de período -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="small text-muted">
+      Período: {{ start|date:"d/m" }} — {{ today|date:"d/m" }} ({{ days }}d)
+    </div>
+    <div class="d-flex gap-1">
+      <a class="btn btn-sm btn-outline-secondary {% if days == 7 %}active{% endif %}" href="?days=7">7d</a>
+      <a class="btn btn-sm btn-outline-secondary {% if days == 14 %}active{% endif %}" href="?days=14">14d</a>
+      <a class="btn btn-sm btn-outline-secondary {% if days == 30 %}active{% endif %}" href="?days=30">30d</a>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-2 mb-3">
+    <div class="col-6">
+      <div class="kpi">
+        <div class="label">Receita (hoje)</div>
+        <div class="value">R$ {{ kpi_today_revenue|floatformat:2 }}</div>
+      </div>
+    </div>
+    <div class="col-3">
+      <div class="kpi">
+        <div class="label">Pedidos</div>
+        <div class="value">{{ kpi_today_orders }}</div>
+      </div>
+    </div>
+    <div class="col-3">
+      <div class="kpi">
+        <div class="label">Ticket</div>
+        <div class="value">R$ {{ kpi_today_ticket|floatformat:2 }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráfico receita/pedidos -->
+  <div class="card card-clean mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 class="title">Vendas diárias</h2>
+      <span class="small text-muted">Receita & Pedidos</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap">
+        <canvas id="salesChart" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mix de pagamento -->
+  <div class="card card-clean mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 class="title">Mix por forma de pagamento</h2>
+      <span class="small text-muted">últimos {{ days }} dias</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrap">
+        <canvas id="mixChart" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top produtos -->
+  <div class="card card-clean mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 class="title">Top produtos (30d)</h2>
+      <span class="small text-muted">por receita</span>
+    </div>
+    <div class="card-body p-0">
+      {% if top_products %}
+        <ul class="list-group list-group-flush">
+          {% for item in top_products %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div class="text-truncate" style="max-width:70%;">
+                {{ item.title }}
+                <span class="badge bg-secondary ms-2">{{ item.qtd }}x</span>
+              </div>
+              <div class="fw-semibold">R$ {{ item.receita|floatformat:2 }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-center text-muted py-4">Sem dados nos últimos 30 dias.</div>
+      {% endif %}
+    </div>
+  </div>
+</main>
+
+<!-- Tab bar (atalhos rápidos) -->
+<nav class="tabbar">
+  <div class="container">
+    <ul class="nav justify-content-around">
+      <li class="nav-item">
+        <a class="nav-link active" href="{% url 'mobile_dashboard' %}">Dashboard</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'orders_list' %}">Pedidos</a>
+      </li>
+      {% if user.is_authenticated and user.is_staff %}
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'sales_report' %}">Relatório</a>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+</nav>
+
+<!-- Dados (JSON seguro) -->
+{{ labels|json_script:"labels-json" }}
+{{ revenue|json_script:"revenue-json" }}
+{{ orders|json_script:"orders-json" }}
+{{ mix_labels|json_script:"mix-labels-json" }}
+{{ mix_values|json_script:"mix-values-json" }}
+
+<script>
+(function(){
+  const labels   = JSON.parse(document.getElementById('labels-json').textContent);
+  const revenue  = JSON.parse(document.getElementById('revenue-json').textContent);
+  const orders   = JSON.parse(document.getElementById('orders-json').textContent);
+  const mixL     = JSON.parse(document.getElementById('mix-labels-json').textContent);
+  const mixV     = JSON.parse(document.getElementById('mix-values-json').textContent);
+
+  // linha (receita) + barras (pedidos) numa mesma área, simples e legível no celular
+  const ctx = document.getElementById('salesChart');
+  if (ctx){
+    new Chart(ctx, {
+      data: {
+        labels: labels,
+        datasets: [
+          { type: 'bar', label: 'Pedidos', data: orders, borderWidth: 1 },
+          { type: 'line', label: 'Receita (R$)', data: revenue, tension: .3, fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero:true, ticks: { callback: v => v } }
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const ds = ctx.dataset.label || '';
+                const v  = ctx.parsed.y;
+                if (ds.includes('Receita')) return `${ds}: R$ ${Number(v).toFixed(2)}`;
+                return `${ds}: ${v}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  const ctx2 = document.getElementById('mixChart');
+  if (ctx2){
+    new Chart(ctx2, {
+      type: 'doughnut',
+      data: { labels: mixL, datasets: [{ data: mixV }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: (c) => {
+                const total = c.dataset.data.reduce((a,b)=>a+b,0) || 1;
+                const val = c.parsed || 0;
+                const pct = (val*100/total).toFixed(1);
+                return `${c.label}: R$ ${val.toFixed(2)} (${pct}%)`;
+              }
+            }
+          }
+        },
+        cutout: '60%'
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
