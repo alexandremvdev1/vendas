@@ -10,23 +10,57 @@
     :root{
       --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18);
       --g1:#0b1020; --g2:#111a3a;
+      --base-font:14px;      /* ↓ tipografia menor no site todo */
     }
+    html{ font-size: var(--base-font); }
     body{ background:#f6f8fb; color:var(--ink); }
+
     .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
+    .navbar-brand{ font-size:1rem; }                         /* logo menor */
+    .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }  /* botões menores */
+
     .sidebar{ background:#0f172a; color:#cbd5e1; min-height:100vh; }
-    .sidebar a{ color:#cbd5e1; text-decoration:none; display:block; padding:.6rem .9rem; border-radius:.5rem; }
+    .sidebar a{
+      color:#cbd5e1; text-decoration:none; display:block; padding:.5rem .75rem; border-radius:.5rem; font-size:.9rem;
+    }
     .sidebar a.active, .sidebar a:hover{ background:rgba(255,255,255,.08); color:#fff; }
-    .kpi{ background:#fff; border:1px solid #e5e7eb; border-radius:.8rem; padding:1rem 1.25rem; }
-    .toolbar .form-select, .toolbar .form-control{ border-radius:.6rem; border-color:#e5e7eb; }
+
+    .kpi{
+      background:#fff; border:1px solid #e5e7eb; border-radius:.8rem; padding:.75rem 1rem;
+    }
+    .kpi .small{ color:var(--muted); font-size:.8rem; }
+    /* os KPIs no HTML usam .fs-4 — reduzimos aqui sem precisar mexer no markup */
+    .kpi .fs-4{ font-size:1.15rem !important; }
+    .kpi .fw-bold{ font-weight:700 !important; }
+
+    .toolbar .form-select, .toolbar .form-control{ border-radius:.6rem; border-color:#e5e7eb; font-size:.85rem; padding:.35rem .5rem; }
+    .toolbar .input-group-text{ font-size:.85rem; padding:.35rem .5rem; }
+    .toolbar .btn{ font-size:.85rem; padding:.35rem .6rem; }
     .toolbar .form-select:focus, .toolbar .form-control:focus{ box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
-    .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); transition:transform .12s ease, box-shadow .12s ease; }
+
+    .card-clean{
+      border:none; box-shadow:0 10px 24px rgba(17,24,39,.08);
+      transition:transform .12s ease, box-shadow .12s ease; border-radius:.9rem;
+    }
     .card-clean:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(17,24,39,.12); }
-    .card-img-top{ aspect-ratio:16/10; object-fit:cover; }
-    .price{ font-weight:800; letter-spacing:.2px; }
+    .card-img-top{ aspect-ratio:16/10; object-fit:cover; border-top-left-radius:.9rem; border-top-right-radius:.9rem; }
+    .card-body .h6{ font-size:.95rem; }       /* títulos dos cards menores */
+    .price{ font-weight:800; letter-spacing:.2px; font-size:1rem; } /* preço menor */
+    .card .btn{ font-size:.85rem; padding:.4rem .6rem; }   /* botões dos cards menores */
     .text-muted-2{ color:var(--muted); }
+
     .sticky-topbar{ position: sticky; top: 0; z-index: 20; background:#ffffffd6; backdrop-filter: blur(6px); }
-    .table thead th{ font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+
+    .table{ font-size:.875rem; }              /* tabela mais compacta */
+    .table thead th{
+      font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b;
+    }
+
     .empty{ border:1px dashed #cbd5e1; border-radius:12px; background:#fff; padding:2rem; text-align:center; }
+
+    /* botões pequenos no cabeçalho de resultados */
+    .btn.btn-sm, .btn-sm{ font-size:.8rem; padding:.3rem .5rem; }
+
     @media (max-width:991.98px){ .sidebar{min-height:auto;} }
   </style>
 </head>
@@ -46,8 +80,8 @@
         <a class="btn btn-sm btn-outline-light" href="{% url 'admin:vendas_product_add' %}">+ Produto</a>
       {% endif %}
       {% if user.is_authenticated and user.is_staff %}
-  <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
-{% endif %}
+        <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
+      {% endif %}
 
       {% if user.is_authenticated %}
         <span class="text-light small d-none d-md-inline">Olá, {{ user.username }}</span>
@@ -176,7 +210,7 @@
                       <h3 class="h6 mb-1">{{ p.title }}</h3>
                       {% if forloop.counter0 < 3 %}<span class="badge text-bg-success">Novo</span>{% endif %}
                     </div>
-                    <div class="price fs-5 mb-2">R$ {{ p.price }}</div>
+                    <div class="price mb-2">R$ {{ p.price }}</div>
                     <p class="text-muted-2 flex-grow-1 mb-3">{{ p.description|default:""|truncatewords:24 }}</p>
 
                     <div class="d-grid gap-2">
@@ -200,7 +234,7 @@
           </div>
 
           <div class="text-center mt-4">
-            <button id="btnMore" class="btn btn-outline-primary">Carregar mais</button>
+            <button id="btnMore" class="btn btn-outline-primary btn-sm">Carregar mais</button>
           </div>
           <div id="emptyCards" class="empty mt-4 d-none">
             <div class="h6 mb-1">Nenhum produto encontrado</div>
@@ -265,15 +299,15 @@
           <div class="h6 mb-1">Sem produtos no momento</div>
           <div class="text-muted-2 mb-3">Volte em breve — estamos preparando novidades.</div>
           {% if user.is_staff %}
-            <a class="btn btn-primary" href="{% url 'admin:vendas_product_add' %}">+ Cadastrar produto</a>
+            <a class="btn btn-primary btn-sm" href="{% url 'admin:vendas_product_add' %}">+ Cadastrar produto</a>
           {% endif %}
         </div>
       {% endif %}
 
       <footer class="py-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center text-muted-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center text-muted-2 small">
           <div>© {% now "Y" %} YLA Criativa - Desenvolvido por Alexandre Martins Vieira</div>
-          <div class="small">Pagamentos via Mercado Pago • Downloads imediatos</div>
+          <div>Pagamentos via Mercado Pago • Downloads imediatos</div>
         </div>
       </footer>
     </main>
@@ -401,7 +435,8 @@
   $max && $max.addEventListener('input', ()=>{ visible = 12; applyFilters(); });
   $sort&& $sort.addEventListener('change', applyFilters);
 
-  $clear && $clear.addEventListener('click', ()=>{
+  $clear && $clear.addEventListener('click', (e)=>{
+    e.preventDefault();
     $q && ($q.value = '');
     $min && ($min.value = '');
     $max && ($max.value = '');

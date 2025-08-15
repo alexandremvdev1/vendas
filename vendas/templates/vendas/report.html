@@ -9,8 +9,11 @@
     :root{
       --ink:#0f172a; --muted:#64748b; --brand:#2563eb; --line:#e5e7eb;
       --card:#ffffff; --bg:#f6f8fb; --ok:#16a34a; --warn:#f59e0b;
+      --base-font:14px; /* ↓ tipografia menor no site todo */
     }
+    html{ font-size:var(--base-font); }
     body{ background:var(--bg); color:var(--ink); }
+
     .nav-lite{
       background:
         radial-gradient(800px 400px at -10% -50%, rgba(37,99,235,.25), transparent),
@@ -18,23 +21,30 @@
         linear-gradient(90deg, #0b1020, #0f172a);
       box-shadow:0 6px 20px rgba(2,6,23,.35);
     }
-    .page-head{
-      display:flex; align-items:center; gap:.75rem; justify-content:space-between;
-    }
-    .page-head .title{
-      margin:0; font-weight:800; letter-spacing:.3px;
-    }
+    .navbar-brand{ font-size:1rem; }
+    .navbar .btn{ font-size:.85rem; padding:.25rem .6rem; }
+
+    .page-head{ display:flex; align-items:center; gap:.75rem; justify-content:space-between; }
+    .page-head .title{ margin:0; font-weight:800; letter-spacing:.3px; }
     .sub{ color:var(--muted); }
+
     .card-clean{ background:var(--card); border:none; border-radius:1rem; box-shadow:0 10px 24px rgba(17,24,39,.06); }
+    .filter-card{ border:1px solid var(--line); }
+
     .metric{
       display:flex; gap:.75rem; align-items:center;
-      padding:1rem; border:1px solid var(--line); border-radius:.9rem; background:#fff;
+      padding:.8rem 1rem; border:1px solid var(--line); border-radius:.9rem; background:#fff;
     }
-    .metric .ico{ font-size:1.25rem; }
-    .metric .val{ font-weight:800; font-size:1.1rem; }
-    .filter-card{ border:1px solid var(--line); }
-    .table thead th{ position:sticky; top:0; background:#fff; z-index:1; }
+    .metric .ico{ font-size:1.05rem; }
+    .metric .val{ font-weight:800; font-size:1rem; } /* números mais discretos */
+    .text-muted.small{ font-size:.8rem !important; }
+
+    .form-control, .form-select{ font-size:.875rem; padding:.375rem .5rem; }
+    .btn{ font-size:.875rem; }
     .back-btn{ border-radius:.6rem; }
+
+    .table{ font-size:.875rem; }
+    .table thead th{ position:sticky; top:0; background:#fff; z-index:1; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
   </style>
 </head>
 <body>
