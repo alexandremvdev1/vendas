@@ -65,7 +65,10 @@
     <div class="d-flex align-items-center gap-2 ms-auto">
       {% if user.is_authenticated and user.is_staff and sales_url %}
         <a class="btn btn-sm btn-outline-light" href="{{ sales_url }}">Relatório</a>
-        <a class="btn btn-sm btn-outline-light" href="{% url 'admin:vendas_product_add' %}">+ Produto</a>
+        <!-- ABRE EM NOVA ABA -->
+        <a class="btn btn-sm btn-outline-light"
+           href="{% url 'admin:vendas_product_add' %}"
+           target="_blank" rel="noopener">+ Produto</a>
       {% endif %}
 
       {% if user.is_authenticated and user.is_staff %}
@@ -155,7 +158,10 @@
     <div class="d-flex gap-2">
       <button id="btnExport" class="btn btn-outline-secondary btn-sm">Exportar CSV</button>
       {% if user.is_staff %}
-        <a class="btn btn-primary btn-sm" href="{% url 'admin:vendas_product_add' %}">+ Novo produto</a>
+        <!-- ABRE EM NOVA ABA -->
+        <a class="btn btn-primary btn-sm"
+           href="{% url 'admin:vendas_product_add' %}"
+           target="_blank" rel="noopener">+ Novo produto</a>
       {% endif %}
     </div>
   </div>
@@ -210,10 +216,12 @@
 
                   {% if user.is_staff %}
                     <div class="d-flex flex-wrap gap-2">
-                      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:vendas_product_change' p.id %}">Editar</a>
+                      <!-- EDITAR EM NOVA ABA -->
+                      <a class="btn btn-outline-secondary btn-sm"
+                         href="{% url 'admin:vendas_product_change' p.id %}"
+                         target="_blank" rel="noopener">Editar</a>
                       <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
-                      <a class="btn btn-outline-danger btn-sm"
-                         href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
+                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
                     </div>
                   {% endif %}
                 </div>
@@ -278,7 +286,10 @@
                       Copiar link
                     </button>
                     {% if user.is_staff %}
-                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:vendas_product_change' p.id %}">Editar</a>
+                      <!-- EDITAR EM NOVA ABA -->
+                      <a class="btn btn-sm btn-outline-secondary"
+                         href="{% url 'admin:vendas_product_change' p.id %}"
+                         target="_blank" rel="noopener">Editar</a>
                       <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
                       <a class="btn btn-sm btn-outline-danger" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
                     {% endif %}
@@ -300,7 +311,10 @@
       <div class="h6 mb-1">Sem produtos no momento</div>
       <div class="text-muted-2 mb-3">Volte em breve — estamos preparando novidades.</div>
       {% if user.is_staff %}
-        <a class="btn btn-primary btn-sm" href="{% url 'admin:vendas_product_add' %}">+ Cadastrar produto</a>
+        <!-- ABRE EM NOVA ABA -->
+        <a class="btn btn-primary btn-sm"
+           href="{% url 'admin:vendas_product_add' %}"
+           target="_blank" rel="noopener">+ Cadastrar produto</a>
       {% endif %}
     </div>
   {% endif %}
@@ -388,7 +402,6 @@
     };
     filtered.sort(sorter);
     filteredRows.sort((a,b)=>{
-      // para tabela, reutiliza as mesmas chaves usando dataset nos <tr>
       if (mode === 'newest')     return parseInt(b.dataset.created,10) - parseInt(a.dataset.created,10);
       if (mode === 'price_asc')  return parseFloat(a.dataset.price||'0') - parseFloat(b.dataset.price||'0');
       if (mode === 'price_desc') return parseFloat(b.dataset.price||'0') - parseFloat(a.dataset.price||'0');
@@ -465,10 +478,9 @@
     }catch(e){ alert(directUrl); }
   });
 
-  // Exportar CSV (dados visíveis na TABELA ou CARDS)
+  // Exportar CSV
   $btnExport && $btnExport.addEventListener('click', ()=>{
     const rowsData = (view === 'table' ? filteredRows : filtered).map(el=>{
-      // tenta pegar dados do DOM para CSV
       const title = (view==='table')
         ? (el.querySelector('.fw-semibold')?.textContent?.trim() || '')
         : (el.querySelector('h3')?.textContent?.trim() || '');
