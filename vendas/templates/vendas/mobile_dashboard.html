@@ -9,12 +9,11 @@
   <style>
     :root{
       --ink:#0f172a; --muted:#64748b; --bg:#0b1020; --bg2:#111a3a;
-      --ring:rgba(37,99,235,.18); --brand:#2563eb; --ok:#16a34a; --warn:#f59e0b;
+      --ring:rgba(37,99,235,.18); --brand:#2563eb;
     }
     html, body { height:100%; }
     body{ background:#f6f8fb; color:var(--ink); }
 
-    /* Topbar enxuta */
     .topbar{
       position: sticky; top:0; z-index:1000;
       background:linear-gradient(90deg,var(--bg),var(--bg2));
@@ -22,33 +21,36 @@
     }
     .topbar .brand{ font-weight:800; letter-spacing:.2px; }
 
-    /* KPIs mobile: cards pequenos 2 colunas */
-    .kpi { background:#fff; border:1px solid #e5e7eb; border-radius:.9rem; padding:.75rem .9rem; }
-    .kpi .label{ font-size:.78rem; color:var(--muted); }
-    .kpi .value{ font-size:1.1rem; font-weight:800; }
+    .kpi{
+      background:#fff; border:1px solid #e5e7eb; border-radius:.7rem;
+      padding:.5rem .6rem;
+    }
+    .kpi .label{
+      font-size:.72rem; color:#64748b; line-height:1;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .kpi .value{
+      font-size:1rem; font-weight:800; line-height:1.05;
+      white-space:nowrap;
+    }
+    .kpi .value .unit{ font-size:.9em; opacity:.85; margin-right:.15rem; }
 
-    /* Cards brancos com sombra */
     .card-clean{ background:#fff; border:none; border-radius:1rem; box-shadow:0 10px 20px rgba(17,24,39,.08); }
     .card-clean .card-header{ background:transparent; border-bottom:1px solid #eef2f7; }
     .card-clean .title{ font-size:.95rem; font-weight:800; margin:0; }
 
-    /* Botões pequenos */
-    .btn-sm, .btn { font-size:.92rem; }
-
-    /* Bottom nav (tab bar) */
     .tabbar{
       position: sticky; bottom:0; z-index:1000; background:#fff; border-top:1px solid #e5e7eb;
     }
     .tabbar .nav-link{ padding:.5rem .25rem; font-size:.8rem; color:#334155;}
     .tabbar .nav-link.active{ color:#0f172a; font-weight:700; }
 
-    /* Gráficos ocupam largura total sem sobras */
-    .chart-wrap{ position:relative; width:100%; }
+    .chart-wrap{ position:relative; width:100%; min-height:220px; }
+    .period .btn{ padding:.25rem .5rem; }
   </style>
 </head>
 <body>
 
-<!-- Topbar -->
 <header class="topbar">
   <div class="container-fluid">
     <div class="d-flex align-items-center justify-content-between py-2">
@@ -68,9 +70,9 @@
 <main class="container py-3">
 
   <!-- Faixa de período -->
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-2 period">
     <div class="small text-muted">
-      Período: {{ start|date:"d/m" }} — {{ today|date:"d/m" }} ({{ days }}d)
+      Período: {{ period_start|date:"d/m" }} — {{ period_end|date:"d/m" }} ({{ days }}d)
     </div>
     <div class="d-flex gap-1">
       <a class="btn btn-sm btn-outline-secondary {% if days == 7 %}active{% endif %}" href="?days=7">7d</a>
@@ -79,37 +81,44 @@
     </div>
   </div>
 
-  <!-- KPIs -->
-  <div class="row g-2 mb-3">
-    <div class="col-6">
+  <!-- KPIs do PERÍODO -->
+  <div class="row g-2 mb-1">
+    <div class="col-4">
       <div class="kpi">
-        <div class="label">Receita (hoje)</div>
-        <div class="value">R$ {{ kpi_today_revenue|floatformat:2 }}</div>
+        <div class="label">Receita (período)</div>
+        <div class="value"><span class="unit">R$</span>{{ kpi_period_revenue|floatformat:2 }}</div>
       </div>
     </div>
-    <div class="col-3">
+    <div class="col-4">
       <div class="kpi">
-        <div class="label">Pedidos</div>
-        <div class="value">{{ kpi_today_orders }}</div>
+        <div class="label">Pedidos (período)</div>
+        <div class="value">{{ kpi_period_orders }}</div>
       </div>
     </div>
-    <div class="col-3">
+    <div class="col-4">
       <div class="kpi">
-        <div class="label">Ticket</div>
-        <div class="value">R$ {{ kpi_today_ticket|floatformat:2 }}</div>
+        <div class="label">Ticket (período)</div>
+        <div class="value"><span class="unit">R$</span>{{ kpi_period_ticket|floatformat:2 }}</div>
       </div>
     </div>
+  </div>
+
+  <!-- Linha auxiliar com HOJE -->
+  <div class="text-muted small mb-3">
+    Hoje: <strong>{{ kpi_today_orders }}</strong> pedido(s) •
+    <strong>R$ {{ kpi_today_revenue|floatformat:2 }}</strong> •
+    ticket <strong>R$ {{ kpi_today_ticket|floatformat:2 }}</strong>
   </div>
 
   <!-- Gráfico receita/pedidos -->
   <div class="card card-clean mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h2 class="title">Vendas diárias</h2>
-      <span class="small text-muted">Receita & Pedidos</span>
+      <span class="small text-muted">Receita &amp; Pedidos</span>
     </div>
     <div class="card-body">
       <div class="chart-wrap">
-        <canvas id="salesChart" height="220"></canvas>
+        <canvas id="salesChart"></canvas>
       </div>
     </div>
   </div>
@@ -122,15 +131,15 @@
     </div>
     <div class="card-body">
       <div class="chart-wrap">
-        <canvas id="mixChart" height="220"></canvas>
+        <canvas id="mixChart"></canvas>
       </div>
     </div>
   </div>
 
-  <!-- Top produtos -->
+  <!-- Top produtos no período -->
   <div class="card card-clean mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <h2 class="title">Top produtos (30d)</h2>
+      <h2 class="title">Top produtos (período)</h2>
       <span class="small text-muted">por receita</span>
     </div>
     <div class="card-body p-0">
@@ -147,13 +156,12 @@
           {% endfor %}
         </ul>
       {% else %}
-        <div class="text-center text-muted py-4">Sem dados nos últimos 30 dias.</div>
+        <div class="text-center text-muted py-4">Sem dados neste período.</div>
       {% endif %}
     </div>
   </div>
 </main>
 
-<!-- Tab bar (atalhos rápidos) -->
 <nav class="tabbar">
   <div class="container">
     <ul class="nav justify-content-around">
@@ -172,7 +180,6 @@
   </div>
 </nav>
 
-<!-- Dados (JSON seguro) -->
 {{ labels|json_script:"labels-json" }}
 {{ revenue|json_script:"revenue-json" }}
 {{ orders|json_script:"orders-json" }}
@@ -181,38 +188,34 @@
 
 <script>
 (function(){
-  const labels   = JSON.parse(document.getElementById('labels-json').textContent);
-  const revenue  = JSON.parse(document.getElementById('revenue-json').textContent);
-  const orders   = JSON.parse(document.getElementById('orders-json').textContent);
-  const mixL     = JSON.parse(document.getElementById('mix-labels-json').textContent);
-  const mixV     = JSON.parse(document.getElementById('mix-values-json').textContent);
+  const labels   = JSON.parse(document.getElementById('labels-json').textContent || "[]");
+  const revenue  = JSON.parse(document.getElementById('revenue-json').textContent || "[]");
+  const orders   = JSON.parse(document.getElementById('orders-json').textContent || "[]");
+  const mixL     = JSON.parse(document.getElementById('mix-labels-json').textContent || "[]");
+  const mixV     = JSON.parse(document.getElementById('mix-values-json').textContent || "[]");
 
-  // linha (receita) + barras (pedidos) numa mesma área, simples e legível no celular
-  const ctx = document.getElementById('salesChart');
-  if (ctx){
-    new Chart(ctx, {
+  const sales = document.getElementById('salesChart');
+  if (sales){
+    new Chart(sales, {
       data: {
         labels: labels,
         datasets: [
-          { type: 'bar', label: 'Pedidos', data: orders, borderWidth: 1 },
+          { type: 'bar',  label: 'Pedidos',      data: orders,  borderWidth: 1 },
           { type: 'line', label: 'Receita (R$)', data: revenue, tension: .3, fill: false }
         ]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          y: { beginAtZero:true, ticks: { callback: v => v } }
-        },
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { beginAtZero:true } },
         plugins: {
           legend: { position: 'bottom', labels: { boxWidth: 12 } },
           tooltip: {
             callbacks: {
               label: ctx => {
-                const ds = ctx.dataset.label || '';
+                const name = ctx.dataset.label || '';
                 const v  = ctx.parsed.y;
-                if (ds.includes('Receita')) return `${ds}: R$ ${Number(v).toFixed(2)}`;
-                return `${ds}: ${v}`;
+                if (name.includes('Receita')) return `${name}: R$ ${Number(v).toFixed(2)}`;
+                return `${name}: ${v}`;
               }
             }
           }
@@ -221,14 +224,13 @@
     });
   }
 
-  const ctx2 = document.getElementById('mixChart');
-  if (ctx2){
-    new Chart(ctx2, {
+  const mix = document.getElementById('mixChart');
+  if (mix){
+    new Chart(mix, {
       type: 'doughnut',
       data: { labels: mixL, datasets: [{ data: mixV }] },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
         plugins: {
           legend: { position: 'bottom' },
           tooltip: {
@@ -241,8 +243,7 @@
               }
             }
           }
-        },
-        cutout: '60%'
+        }
       }
     });
   }
