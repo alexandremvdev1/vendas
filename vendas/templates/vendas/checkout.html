@@ -12,7 +12,7 @@
     }
     body{background:#f6f8fb; color:var(--ink);}
 
-    /* ---------- NAV ---------- */
+    /* NAV */
     .nav-lite{
       background:
         radial-gradient(900px 400px at -5% -50%, rgba(37,99,235,.25), transparent),
@@ -21,17 +21,11 @@
       box-shadow:0 6px 20px rgba(2,6,23,.35);
     }
     .navbar-brand{font-weight:800; letter-spacing:.2px; color:#fff;}
-    .brand-logo{
-      height:36px; width:auto; object-fit:contain; border-radius:.5rem;
-      background:rgba(255,255,255,.06); padding:.25rem .4rem;
-      box-shadow:0 6px 18px rgba(0,0,0,.25);
-    }
-    .brand-text{color:#fff;}
     .nav-actions .btn{ --bs-btn-font-weight:600; border-radius:.6rem; }
     .nav-actions .link-light{opacity:.9}
     .nav-actions .link-light:hover{opacity:1}
 
-    /* ---------- HERO (mínimo) ---------- */
+    /* HERO */
     .hero{
       position:relative; overflow:hidden; color:#e5edff;
       background:
@@ -44,45 +38,47 @@
     .hero-title{
       color:#fff; font-weight:900; letter-spacing:.2px;
       font-size:clamp(1.25rem, 1rem + 2.2vw, 2.25rem);
-      margin: .25rem 0 .25rem 0;
+      margin:.25rem 0;
     }
     .hero-sub{color:#c9d4ff; margin:0}
 
-    /* ---------- Cards / inputs ---------- */
+    /* Cards / inputs */
     .card-clean{border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:1rem;}
     .field .form-control{padding:.7rem .9rem; border-radius:.7rem; border-color:#e2e8f0;}
     .field .form-control:focus{box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd;}
     .thumb-fallback{height:220px; background:#eef2f7; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:.95rem;}
     .product-title{font-weight:800; line-height:1.2; color:var(--ink); font-size:clamp(1.25rem, 1.2rem + 1vw, 2rem); margin-top:.75rem;}
     .price-display{font-weight:900; color:var(--ink); font-size:clamp(1.6rem, 1.2rem + 2vw, 2.4rem); letter-spacing:.3px; margin:.25rem 0 1rem 0;}
-    .spinner{display:inline-block; width:1rem; height:1rem; border:.15em solid #fff; border-right-color:transparent; border-radius:50%; animation: spin .6s linear infinite; vertical-align:-2px;}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .promo-badge{background:#ef4444;}
     .old-price{color:#64748b;}
+    .promo-badge{background:#ef4444;}
+    .badge-discount{ font-weight:800; }
+    .discount-row{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 
-    /* ---------- Carrossel ---------- */
+    /* badge sobre a imagem (mini cards) */
+    .pin{
+      position:absolute; top:.5rem; left:.5rem;
+      background:#ef4444; color:#fff; font-weight:800; font-size:.8rem;
+      border-radius:.5rem; padding:.2rem .5rem;
+      box-shadow:0 6px 16px rgba(0,0,0,.25);
+    }
+
+    /* Carrossel */
     .more-wrap{position:relative;}
     .more-row{display:flex; gap:1rem; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:.25rem; -ms-overflow-style:none; scrollbar-width:none;}
     .more-row::-webkit-scrollbar{display:none;}
-    .mini-card{flex:0 0 240px; scroll-snap-align:start; border:none; box-shadow:0 6px 18px rgba(17,24,39,.08); border-radius:.9rem;}
+    .mini-card{flex:0 0 240px; scroll-snap-align:start; border:none; box-shadow:0 6px 18px rgba(17,24,39,.08); border-radius:.9rem; position:relative;}
     .mini-img{aspect-ratio:16/10; object-fit:cover; width:100%; border-top-left-radius:.9rem; border-top-right-radius:.9rem;}
     .more-nav{position:absolute; top:50%; transform:translateY(-50%); z-index:5; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,.15); background:#fff;}
     .more-prev{left:-.5rem;} .more-next{right:-.5rem;}
     @media (max-width:576px){ .mini-card{flex-basis: 78%;} .more-prev{left:.25rem;} .more-next{right:.25rem;} }
 
-    /* Evita rolagem lateral */
+    /* Evita scroll lateral */
     html, body { max-width:100%; overflow-x:hidden; }
 
-    /* ---------- Chamada central acima do formulário ---------- */
-    .checkout-call {
-      text-align: center;
-      font-weight: 700;
-      font-size: 1.15rem;
-      color: var(--ink);
-      margin-bottom: 1rem;
-    }
+    /* Chamada acima do form */
+    .checkout-call { text-align:center; font-weight:700; font-size:1.05rem; color:var(--ink); margin-bottom:1rem; }
 
-    /* ---------- Rodapé ---------- */
+    /* Rodapé */
     .contact-footer{ background:#0b1020; color:#e5e7eb; border-top:1px solid #1f2937; }
     .contact-footer a{ color:#93c5fd; text-decoration:none; }
     .contact-footer a:hover{ text-decoration:underline; }
@@ -92,26 +88,23 @@
       max-height:48px; width:auto; object-fit:contain; margin-bottom:.5rem;
       filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
     }
-    /* Selos de confiança no rodapé */
     .trust{
-      display:grid; gap:.5rem;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.12);
-      border-radius: .9rem; padding:.9rem 1rem;
+      display:grid; gap:.5rem; background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12); border-radius:.9rem; padding:.9rem 1rem;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     }
-    .trust .item{
-      display:flex; align-items:center; gap:.6rem; font-weight:600; color:#e7eeff; justify-content:center;
-    }
-    .trust .ico{width:22px; height:22px; display:inline-grid; place-items:center;
-      border-radius:50%; background:rgba(255,255,255,.12); font-size:.9rem;}
+    .trust .item{ display:flex; align-items:center; gap:.6rem; font-weight:600; color:#e7eeff; justify-content:center; }
+    .trust .ico{width:22px; height:22px; display:inline-grid; place-items:center; border-radius:50%; background:rgba(255,255,255,.12); font-size:.9rem;}
+    .spinner{display:inline-block; width:1rem; height:1rem; border:.15em solid #fff; border-right-color:transparent; border-radius:50%; animation: spin .6s linear infinite; vertical-align:-2px;}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
 
-<!-- ========= NAV ========= -->
+<!-- NAV (limpa) -->
 <nav class="navbar nav-lite navbar-dark py-2">
   <div class="container">
+    <span class="navbar-brand">Loja Digital</span>
     <div class="nav-actions d-none d-md-flex align-items-center gap-3 ms-auto">
       {% if company and company.phone_e164 %}
         <a class="link-light small text-decoration-none" href="tel:{{ company.phone_e164 }}">📞 {{ company.phone_display }}</a>
@@ -128,7 +121,7 @@
   </div>
 </nav>
 
-<!-- ========= HERO (apenas títulos) ========= -->
+<!-- HERO -->
 <header class="hero py-4 py-md-5">
   <div class="container">
     <h1 class="hero-title">Checkout</h1>
@@ -140,17 +133,32 @@
   <div class="row g-4">
     <!-- Esquerda: mídia/descrição -->
     <div class="col-12 col-lg-6">
-      <div class="card card-clean">
+      <div class="card card-clean position-relative">
+        {% if product.has_promo %}
+          <!-- badge sobre a imagem (principal) -->
+          <div class="pin js-discount"
+               data-old="{{ product.price|floatformat:2 }}"
+               data-new="{{ product.price_to_charge|floatformat:2 }}">
+            -{{ product.discount_percent }}
+          </div>
+        {% endif %}
+
         {% if product.image %}
           <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.title }}" loading="lazy">
         {% else %}
           <div class="thumb-fallback">Sem imagem do produto</div>
         {% endif %}
+
         <div class="card-body">
           <h2 class="product-title">{{ product.title }}</h2>
 
           {% if product.has_promo %}
-            <span class="badge promo-badge text-white mb-2">PREÇO PROMOCIONAL</span>
+            <div class="discount-row mb-2">
+              <span class="badge promo-badge text-white">PREÇO PROMOCIONAL</span>
+              <span class="badge text-bg-danger badge-discount js-discount"
+                    data-old="{{ product.price|floatformat:2 }}"
+                    data-new="{{ product.price_to_charge|floatformat:2 }}">-{{ product.discount_percent }}%</span>
+            </div>
             <div class="old-price small"><del>R$ {{ product.price|floatformat:2 }}</del></div>
             <div class="price-display">R$ {{ product.price_to_charge|floatformat:2 }}</div>
           {% else %}
@@ -179,12 +187,7 @@
     <!-- Direita: formulário -->
     <div class="col-12 col-lg-6">
       <div class="card card-clean p-3 p-md-4">
-
-        <!-- CHAMADA CENTRALIZADA ACIMA DO FORMULÁRIO -->
-        <div class="checkout-call">
-          📝 Preencha seus dados para continuar a compra
-        </div>
-
+        <div class="checkout-call">📝 Preencha seus dados para continuar a compra</div>
         <h2 class="h5 mb-3">Seus dados</h2>
 
         {% if form.non_field_errors %}
@@ -250,6 +253,13 @@
         {% for p in others %}
           {% with eff=p.price_to_charge old=p.price %}
           <div class="card mini-card">
+            {% if p.has_promo %}
+              <div class="pin js-discount"
+                   data-old="{{ old|floatformat:2 }}"
+                   data-new="{{ eff|floatformat:2 }}">
+                -{{ p.discount_percent }}%
+              </div>
+            {% endif %}
             {% if p.image %}
               <img class="mini-img" src="{{ p.image.url }}" alt="{{ p.title }}">
             {% else %}
@@ -259,10 +269,14 @@
             {% endif %}
             <div class="card-body p-2">
               <div class="small fw-semibold text-truncate" title="{{ p.title }}">{{ p.title }}</div>
+
               {% if p.has_promo %}
                 <div class="small text-muted"><del>R$ {{ old|floatformat:2 }}</del></div>
+                <div class="fw-bold">R$ {{ eff|floatformat:2 }}</div>
+              {% else %}
+                <div class="fw-bold">R$ {{ old|floatformat:2 }}</div>
               {% endif %}
-              <div class="fw-bold">R$ {{ eff|floatformat:2 }}</div>
+
               <a class="btn btn-sm btn-primary w-100 mt-2" href="{{ p.get_checkout_url }}">Comprar</a>
             </div>
           </div>
@@ -275,7 +289,7 @@
   {% endif %}
 </main>
 
-<!-- ===== Rodapé (Company + selos) ===== -->
+<!-- Rodapé (Company + selos) -->
 <footer class="contact-footer py-4 mt-5 text-center">
   <div class="container">
     {% if company %}
@@ -299,7 +313,6 @@
         </div>
       </div>
 
-      <!-- Selos no rodapé -->
       <div class="row justify-content-center mt-3">
         <div class="col-12 col-lg-8">
           <div class="trust">
@@ -322,7 +335,7 @@
 
 <script>
 (function(){
-  // ---------- Helpers de máscara ----------
+  // ---------- Máscaras ----------
   function onlyDigits(s){ return (s||"").replace(/\D/g, ""); }
   function formatCPF(v){
     v = onlyDigits(v).slice(0,11);
@@ -414,6 +427,21 @@
   }
   prev && prev.addEventListener('click', ()=> scrollByCard(-1));
   next && next.addEventListener('click', ()=> scrollByCard(1));
+
+  // ---------- Fallback para preencher % de desconto (se back-end não enviar) ----------
+  document.querySelectorAll('.js-discount').forEach(el=>{
+    const txt = (el.textContent || '').trim();
+    if (/^\-?\d+%$/.test(txt)) return; // já veio pronto
+    const oldStr = (el.dataset.old || '').replace(',','.');
+    const newStr = (el.dataset.new || '').replace(',','.');
+    const oldN = parseFloat(oldStr), newN = parseFloat(newStr);
+    if (isFinite(oldN) && isFinite(newN) && oldN > 0 && newN < oldN){
+      const pct = Math.round((1 - (newN/oldN)) * 100);
+      el.textContent = `-${pct}%`;
+    }else{
+      el.classList.add('d-none');
+    }
+  });
 })();
 </script>
 </body>

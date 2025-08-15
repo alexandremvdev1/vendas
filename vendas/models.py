@@ -1,6 +1,8 @@
 # vendas/models.py
 import uuid
 from datetime import timedelta
+from decimal import Decimal
+import re
 
 from django.db import models
 from django.urls import reverse
@@ -8,13 +10,18 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.conf import settings
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 
 # ---------------------------------------
 # Storages do Cloudinary (com fallback local)
 # ---------------------------------------
 try:
     # Requer: cloudinary>=1.41 e django-cloudinary-storage>=0.3.0
-    from cloudinary_storage.storage import MediaCloudinaryStorage, RawMediaCloudinaryStorage
+    from cloudinary_storage.storage import (
+        MediaCloudinaryStorage,
+        RawMediaCloudinaryStorage,
+    )
     IMAGE_STORAGE_KW = {"storage": MediaCloudinaryStorage()}
     RAW_STORAGE_KW = {"storage": RawMediaCloudinaryStorage()}
 except Exception:
@@ -79,14 +86,11 @@ def default_order_expiry():
 # ---------------------------------------
 # Cliente
 # ---------------------------------------
-# vendas/models.py
-import re
-
 class Customer(models.Model):
     full_name = models.CharField("Nome completo", max_length=160)
     cpf = models.CharField("CPF", max_length=14, unique=True)  # salvo formatado 000.000.000-00
     email = models.EmailField("E-mail")
-    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)  # será salvo como +55DDXXXXXXXXX
+    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)  # salvo em E.164 (+55...)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -113,21 +117,10 @@ class Customer(models.Model):
         s = re.sub(r"\D", "", (value or ""))
         if not s:
             return ""
-
-        # tira zeros à esquerda (trunk)
         s = s.lstrip("0")
-
-        # separa o core (sem país)
-        if s.startswith("55"):
-            core = s[2:]
-        else:
-            core = s
-
-        # limita o core ao tamanho típico (DDD 2 + número 8/9)
+        core = s[2:] if s.startswith("55") else s
         if len(core) > 11:
-            core = core[-11:]  # mantém o final (ex.: colagens com DDI repetido)
-
-        # se vier muito curto, ainda assim prefixa — quem valida é a camada de formulário
+            core = core[-11:]
         return f"+55{core}" if core else ""
 
     def save(self, *args, **kwargs):
@@ -135,11 +128,10 @@ class Customer(models.Model):
         self.phone = self.normalize_br_phone(self.phone)
         super().save(*args, **kwargs)
 
+
 # ---------------------------------------
 # Produto
 # ---------------------------------------
-from urllib.parse import urlparse, parse_qs  # ⬅️ adicione este import
-
 class Product(models.Model):
     title = models.CharField("Título", max_length=160)
     slug = models.SlugField(unique=True, max_length=180, editable=False)
@@ -196,7 +188,7 @@ class Product(models.Model):
         """
         True se a promoção estiver ativa e o preço promocional válido e menor que o normal.
         """
-        return bool(self.promo_active and self.promo_price and self.promo_price < self.price)
+        return bool(self.promo_active and self.promo_price is not None and self.promo_price < self.price)
 
     @property
     def price_to_charge(self):
@@ -206,6 +198,45 @@ class Product(models.Model):
         return self.promo_price if self.has_promo else self.price
 
     @property
+    def discount_amount(self) -> Decimal:
+        """
+        Valor absoluto de desconto (R$). 0 se não estiver em promoção.
+        """
+        try:
+            if self.has_promo and self.price and self.promo_price is not None:
+                return (self.price - self.promo_price).copy_abs()
+        except Exception:
+            pass
+        return Decimal("0.00")
+
+    @property
+    def discount_percent(self) -> int:
+        """
+        Percentual de desconto arredondado para inteiro. 0 se não estiver em promoção.
+        Ex.: price=100, promo_price=79.90 -> 20 (%)
+        """
+        try:
+            if self.has_promo and self.price and self.price > 0:
+                pct = (Decimal("1") - (self.price_to_charge / self.price)) * 100
+                return int(pct.quantize(Decimal("1")))  # arredonda para inteiro
+        except Exception:
+            pass
+        return 0
+
+    # Sinônimos para compatibilidade com templates antigos
+    @property
+    def promo_percent(self) -> int:
+        return self.discount_percent
+
+    @property
+    def promo_pct(self) -> int:
+        return self.discount_percent
+
+    @property
+    def discount_pct(self) -> int:
+        return self.discount_percent
+
+    @property
     def video_embed_url(self):
         """
         (opcional) gera URL de embed p/ YouTube/Vimeo a partir de video_url normal.
@@ -213,8 +244,8 @@ class Product(models.Model):
         url = (self.video_url or "").strip()
         if not url:
             return ""
+        # YouTube (watch ou youtu.be)
         if "youtube.com/watch" in url or "youtu.be/" in url:
-            import re
             vid = None
             if "watch?v=" in url:
                 vid = url.split("watch?v=", 1)[-1].split("&", 1)[0]
@@ -222,10 +253,12 @@ class Product(models.Model):
                 m = re.search(r"youtu\.be/([^?&/]+)", url)
                 vid = m.group(1) if m else None
             return f"https://www.youtube.com/embed/{vid}" if vid else url
+        # Vimeo
         if "vimeo.com/" in url:
             vid = url.rstrip("/").split("/")[-1]
             return f"https://player.vimeo.com/video/{vid}"
         return url
+
 
 # ---------------------------------------
 # Pedido (Pix + Cartão)
@@ -341,11 +374,8 @@ class DownloadLink(models.Model):
     def create_for_order(cls, order, days_valid=7):
         return cls.objects.create(order=order, expires_at=timezone.now() + timedelta(days=days_valid))
 
-# --- helpers e validators para Company ---
-import re
-from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
 
+# --- helpers e validators para Company ---
 def _only_digits(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
@@ -359,6 +389,7 @@ phone_e164_validator = RegexValidator(
     regex=r"^\+\d{10,15}$",
     message="Use o formato internacional (E.164), ex.: +556300000000",
 )
+
 
 class Company(models.Model):
     corporate_name = models.CharField("Razão social", max_length=160)
@@ -403,3 +434,29 @@ class Company(models.Model):
             return self.logo.url if self.logo else ""
         except Exception:
             return ""
+
+    @property
+    def phone_display(self) -> str:
+        """
+        Exibe phone_e164 em formato BR legível: (DD) 99999-9999 ou (DD) 9999-9999.
+        Se não conseguir formatar, retorna o próprio phone_e164.
+        """
+        d = re.sub(r"\D", "", self.phone_e164 or "")
+        if not d:
+            return ""
+        core = d[2:] if d.startswith("55") else d  # remove DDI 55, se houver
+        if len(core) == 11:  # 9 dígitos
+            ddd, n1, n2 = core[:2], core[2:7], core[7:]
+            return f"({ddd}) {n1}-{n2}"
+        if len(core) == 10:  # 8 dígitos
+            ddd, n1, n2 = core[:2], core[2:6], core[6:]
+            return f"({ddd}) {n1}-{n2}"
+        return self.phone_e164 or ""
+
+    @property
+    def whatsapp_link(self) -> str:
+        """
+        Link direto para WhatsApp baseado em phone_e164.
+        """
+        d = re.sub(r"\D", "", self.phone_e164 or "")
+        return f"https://wa.me/{d}" if d else ""
