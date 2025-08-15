@@ -41,12 +41,13 @@
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{% url 'home' %}">YLA Criativa</a>
     <div class="d-flex gap-2">
-      <a class="btn btn-outline-light btn-sm" href="{% url 'home' %}">Catálogo</a>
-      <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
+      <!-- cores diferentes -->
+      <a class="btn btn-info btn-sm" href="{% url 'home' %}">Catálogo</a>
+      <a class="btn btn-secondary btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
       {% if user.is_authenticated %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Sair</a>
+        <a class="btn btn-danger btn-sm" href="{% url 'logout' %}">Sair</a>
       {% else %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
+        <a class="btn btn-success btn-sm" href="{% url 'login' %}">Entrar</a>
       {% endif %}
     </div>
   </div>
@@ -56,7 +57,7 @@
 
   <!-- Botão voltar para a Home -->
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <a class="btn btn-outline-secondary btn-sm" href="{% url 'home' %}">← Voltar para a Home</a>
+    <a class="btn btn-outline-info btn-sm" href="{% url 'home' %}">← Voltar para a Home</a>
   </div>
 
   {% if messages %}
@@ -109,10 +110,12 @@
       </select>
     </div>
     <div class="col-6 col-md-2">
+      <!-- primário para filtrar -->
       <button class="btn btn-primary w-100">Filtrar</button>
     </div>
     <div class="col-12 col-md-3 text-md-end">
-      <a class="btn btn-outline-secondary w-100 w-md-auto" href="{% url 'orders_list' %}">Limpar</a>
+      <!-- cor diferente para limpar -->
+      <a class="btn btn-dark w-100 w-md-auto" href="{% url 'orders_list' %}">Limpar</a>
     </div>
   </form>
 
@@ -153,24 +156,26 @@
               </td>
               <td class="text-end">
                 {% if o.payment_type == 'pix' %}
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'payment_pending' o.id %}">Ver</a>
+                  <!-- azul para "Ver" -->
+                  <a class="btn btn-sm btn-primary" href="{% url 'payment_pending' o.id %}">Ver</a>
                 {% else %}
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'pay_card' o.id %}">Checkout</a>
+                  <!-- verde para "Checkout" -->
+                  <a class="btn btn-sm btn-success" href="{% url 'pay_card' o.id %}">Checkout</a>
                 {% endif %}
 
-                <!-- Lembrar por e-mail -->
+                <!-- Lembrar por e-mail: info -->
                 <form action="{% url 'order_send_reminder' o.id %}" method="post" class="d-inline">
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                  <button class="btn btn-sm btn-outline-dark" {% if o.status != 'pending' %}disabled{% endif %}>
+                  <button class="btn btn-sm btn-info" {% if o.status != 'pending' %}disabled{% endif %}>
                     E-mail
                   </button>
                 </form>
 
-                <!-- WhatsApp -->
+                <!-- WhatsApp: amarelo -->
                 {% if o.customer.phone %}
                   <a
-                    class="btn btn-sm btn-success ms-1 btn-wa"
+                    class="btn btn-sm btn-warning ms-1 btn-wa"
                     target="_blank" rel="noopener"
                     data-phone="{{ o.customer.phone }}"
                     data-name="{{ o.customer.full_name|default:'' }}"

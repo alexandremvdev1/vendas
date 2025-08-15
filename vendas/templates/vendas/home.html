@@ -16,8 +16,8 @@
     body{ background:#f6f8fb; color:var(--ink); }
 
     .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
-    .navbar-brand{ font-size:1rem; }                         /* logo menor */
-    .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }  /* botões menores */
+    .navbar-brand{ font-size:1rem; }
+    .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
 
     .kpi{
       background:#fff; border:1px solid #e5e7eb; border-radius:.8rem; padding:.75rem 1rem;
@@ -39,7 +39,6 @@
     .card-img-top{ aspect-ratio:16/10; object-fit:cover; border-top-left-radius:.9rem; border-top-right-radius:.9rem; }
     .card-body .h6{ font-size:.95rem; }
     .price{ font-weight:800; letter-spacing:.2px; font-size:1rem; }
-    .card .btn{ font-size:.85rem; padding:.4rem .6rem; }
     .text-muted-2{ color:var(--muted); }
 
     .sticky-topbar{ position: sticky; top: 0; z-index: 20; background:#ffffffd6; backdrop-filter: blur(6px); }
@@ -54,7 +53,6 @@
     .btn.btn-sm, .btn-sm{ font-size:.8rem; padding:.3rem .5rem; }
     .badge-discount{ font-weight:700; }
   </style>
-  
 </head>
 <body>
 
@@ -66,32 +64,31 @@
     {% url 'mobile_dashboard' as mobile_url %}
     <div class="d-flex align-items-center gap-2 ms-auto">
       {% if user.is_authenticated and user.is_staff and sales_url %}
-        <a class="btn btn-sm btn-outline-light" href="{{ sales_url }}">Relatório</a>
+        <a class="btn btn-sm btn-info" href="{{ sales_url }}">Relatório</a>
         <!-- abre em nova aba -->
-        <a class="btn btn-sm btn-outline-light"
+        <a class="btn btn-sm btn-success"
            href="{% url 'admin:vendas_product_add' %}"
            target="_blank" rel="noopener">+ Produto</a>
       {% endif %}
 
       {% if user.is_authenticated and user.is_staff %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
+        <a class="btn btn-sm btn-secondary" href="{% url 'orders_list' %}">Pedidos</a>
       {% endif %}
 
-      <!-- NOVO: botão para o Dashboard Mobile -->
+      <!-- Botão para o Dashboard Mobile -->
       <a class="btn btn-sm btn-warning"
          href="{{ mobile_url }}"
-         target="_blank" rel="noopener">📊 Dashboard Mobile</a>
+         target="_blank" rel="noopener">📊 Dashboard</a>
 
       {% if user.is_authenticated %}
         <span class="text-light small d-none d-md-inline">Olá, {{ user.username }}</span>
         {% include "partials/logout_button.html" %}
       {% else %}
-        <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Entrar</a>
+        <a class="btn btn-sm btn-light" href="{% url 'login' %}">Entrar</a>
       {% endif %}
     </div>
   </div>
 </nav>
-
 
 <main class="container py-3 py-lg-4">
   <!-- KPIs -->
@@ -155,6 +152,7 @@
         </select>
       </div>
       <div class="col-6 col-md-2 d-flex gap-2">
+        <!-- mantém as cores porque o JS depende das classes primary/outline-primary -->
         <button id="btnCards" class="btn btn-primary w-50" aria-pressed="true">Cards</button>
         <button id="btnTable" class="btn btn-outline-primary w-50" aria-pressed="false">Tabela</button>
       </div>
@@ -164,10 +162,10 @@
   <div class="d-flex align-items-center justify-content-between mb-2">
     <h2 class="h6 m-0">Resultados <span id="resCount" class="text-muted-2 fw-normal"></span></h2>
     <div class="d-flex gap-2">
-      <button id="btnExport" class="btn btn-outline-secondary btn-sm">Exportar CSV</button>
+      <button id="btnExport" class="btn btn-dark btn-sm">Exportar CSV</button>
       {% if user.is_staff %}
         <!-- ABRE EM NOVA ABA -->
-        <a class="btn btn-primary btn-sm"
+        <a class="btn btn-success btn-sm"
            href="{% url 'admin:vendas_product_add' %}"
            target="_blank" rel="noopener">+ Novo produto</a>
       {% endif %}
@@ -215,8 +213,8 @@
                 <p class="text-muted-2 flex-grow-1 mb-3">{{ p.description|default:""|truncatewords:24 }}</p>
 
                 <div class="d-grid gap-2">
-                  <a class="btn btn-primary" href="{{ p.get_checkout_url }}">Ir ao checkout</a>
-                  <button class="btn btn-outline-dark js-copy"
+                  <a class="btn btn-success" href="{{ p.get_checkout_url }}">Ir ao checkout</a>
+                  <button class="btn btn-info js-copy"
                           type="button"
                           data-url="{{ request.scheme }}://{{ request.get_host }}{{ p.get_checkout_url }}">
                     Copiar link
@@ -225,11 +223,11 @@
                   {% if user.is_staff %}
                     <div class="d-flex flex-wrap gap-2">
                       <!-- EDITAR EM NOVA ABA -->
-                      <a class="btn btn-outline-secondary btn-sm"
+                      <a class="btn btn-warning btn-sm"
                          href="{% url 'admin:vendas_product_change' p.id %}"
                          target="_blank" rel="noopener">Editar</a>
-                      <a class="btn btn-outline-secondary btn-sm" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
-                      <a class="btn btn-outline-danger btn-sm" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
+                      <a class="btn btn-secondary btn-sm" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
+                      <a class="btn btn-danger btn-sm" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
                     </div>
                   {% endif %}
                 </div>
@@ -287,19 +285,18 @@
                 <td>{{ p.created_at|date:"d/m/Y H:i" }}</td>
                 <td>
                   <div class="d-flex flex-wrap gap-2">
-                    <a class="btn btn-sm btn-primary" href="{{ p.get_checkout_url }}">Checkout</a>
-                    <button class="btn btn-sm btn-outline-dark js-copy"
+                    <a class="btn btn-sm btn-success" href="{{ p.get_checkout_url }}">Checkout</a>
+                    <button class="btn btn-sm btn-info js-copy"
                             type="button"
                             data-url="{{ request.scheme }}://{{ request.get_host }}{{ p.get_checkout_url }}">
                       Copiar link
                     </button>
                     {% if user.is_staff %}
-                      <!-- EDITAR EM NOVA ABA -->
-                      <a class="btn btn-sm btn-outline-secondary"
+                      <a class="btn btn-sm btn-warning"
                          href="{% url 'admin:vendas_product_change' p.id %}"
                          target="_blank" rel="noopener">Editar</a>
-                      <a class="btn btn-sm btn-outline-secondary" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
-                      <a class="btn btn-sm btn-outline-danger" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
+                      <a class="btn btn-sm btn-secondary" href="{% url 'admin:vendas_order_changelist' %}?product__id__exact={{ p.id }}">Pedidos</a>
+                      <a class="btn btn-sm btn-danger" href="{% url 'admin:vendas_product_delete' p.id %}">Excluir</a>
                     {% endif %}
                   </div>
                 </td>
@@ -320,7 +317,7 @@
       <div class="text-muted-2 mb-3">Volte em breve — estamos preparando novidades.</div>
       {% if user.is_staff %}
         <!-- ABRE EM NOVA ABA -->
-        <a class="btn btn-primary btn-sm"
+        <a class="btn btn-success btn-sm"
            href="{% url 'admin:vendas_product_add' %}"
            target="_blank" rel="noopener">+ Cadastrar produto</a>
       {% endif %}
