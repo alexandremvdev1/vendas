@@ -7,85 +7,170 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     :root{
-      --g1:#0b1020; --g2:#111a3a; --ring:rgba(37,99,235,.18);
+      --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18);
+      --brand:#2563eb; --violet:#8b5cf6;
+      --g1:#0b1020; --g2:#111a3a;
+      --base-font:14px;            /* ↓ use 13px se quiser mais compacto ainda */
     }
-    body{ background:#f6f8fb; }
-    .nav-lite{ background:linear-gradient(90deg,var(--g1),var(--g2)); }
-    .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); }
-    .form-control:focus{ box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
-    .brand{ font-weight:700; letter-spacing:.2px; }
-    .icon-lock{ display:inline-block; width:1.2rem; height:1.2rem; border:.12rem solid currentColor; border-radius:.2rem; position:relative; }
-    .icon-lock:before{ content:""; position:absolute; width:.7rem; height:.45rem; border:.12rem solid currentColor; border-bottom:none; border-radius:.7rem .7rem 0 0; left:50%; transform:translateX(-50%); top:-.55rem; }
-    .btn-eye{ border:0; background:transparent; }
+    html{ font-size:var(--base-font); }
+    body{ background:#0f1428; color:var(--ink); }
+
+    /* Top hero com gradientes coloridos */
+    .auth-hero{
+      position:relative; overflow:hidden;
+      background:
+        radial-gradient(1000px 480px at -10% -10%, rgba(37,99,235,.28), transparent),
+        radial-gradient(760px 420px at 110% -10%, rgba(34,197,94,.20), transparent),
+        radial-gradient(760px 380px at 50% 130%, rgba(139,92,246,.16), transparent),
+        linear-gradient(180deg, var(--g1), var(--g2));
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+
+    /* Branding (logo + nome) */
+    .brand-wrap{ text-align:center; padding:1.5rem 1rem .75rem; }
+    .brand-logo{
+      width:56px; height:56px; object-fit:contain; border-radius:14px;
+      background:rgba(255,255,255,.06);
+      box-shadow:0 10px 24px rgba(2,6,23,.35);
+      border:0px solid rgba(255,255,255,.15);
+    }
+    .brand-name{
+      color:#fff; font-weight:900; letter-spacing:.3px; margin-top:.5rem;
+      font-size:clamp(.95rem, .95rem + .8vw, 1.2rem);
+      text-shadow:0 1px 0 rgba(0,0,0,.15);
+    }
+    .brand-sub{ color:#d9e3ff; font-size:.8rem; opacity:.9; }
+
+    /* Card “glass” compacto */
+    .card-clean{
+      border:none; border-radius:.9rem;
+      background:linear-gradient(180deg, #ffffff, #fbfdff);
+      box-shadow:0 14px 28px rgba(2,6,23,.16);
+    }
+    .card-clean .title{ font-weight:800; letter-spacing:.2px; color:#0f172a; }
+
+    /* Inputs / foco compactos */
+    .form-control, .input-group-text{ font-size:.875rem; padding:.4rem .6rem; }
+    .form-control:focus{ box-shadow:0 0 0 .2rem var(--ring); border-color:#93c5fd; }
+    .input-group-text{ background:#fff; border-color:#e5e7eb; }
+    .btn-eye{ border:0; background:transparent; font-size:1rem; padding:.25rem .4rem; }
+    .caps-hint{ color:#b91c1c; }
+
+    /* Botão principal menor */
+    .btn-brand{
+      background:linear-gradient(90deg, var(--brand), var(--violet));
+      border:0; font-weight:700; font-size:.92rem; padding:.5rem .9rem;
+    }
+    .btn-brand:hover{ filter:brightness(1.04); }
+    .btn-back{ color:#c7d2fe; border-color:#c7d2fe40; }
+    .btn-back:hover{ color:#fff; border-color:#fff; }
+
+    /* Spinner minimalista no botão */
+    .spinner{
+      display:inline-block; width:.9rem; height:.9rem;
+      border:.14em solid rgba(255,255,255,.85);
+      border-right-color:transparent; border-radius:50%;
+      animation: spin .6s linear infinite; vertical-align:-2px;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+
+    /* Links / Rodapé */
+    .help-links a{ color:#1d4ed8; text-decoration:none; }
+    .help-links a:hover{ text-decoration:underline; }
+    .page-footer{ color:#9aa3b2; }
+
+    /* Conteúdo central */
+    .auth-wrap{ margin-top:-16px; }
   </style>
 </head>
 <body>
-<nav class="navbar nav-lite navbar-dark">
-  <div class="container d-flex align-items-center gap-3">
-    <a class="navbar-brand brand" href="{% url 'home' %}">Loja Digital</a>
-  </div>
-</nav>
 
-<main class="container py-5">
+<!-- Cabeçalho com logo e nome da empresa (tolerante a ausência de company) -->
+<header class="auth-hero">
+  <div class="container">
+    <div class="brand-wrap">
+      {% if company %}
+        {% if company.logo_url %}
+          <img class="brand-logo" src="{{ company.logo_url }}" alt="{{ company.trade_name|default:company.corporate_name }}">
+        {% else %}
+          <img class="brand-logo" src="https://dummyimage.com/144x144/1f2937/ffffff&text=LD" alt="{{ company.trade_name|default:company.corporate_name|default:'Loja Digital' }}">
+        {% endif %}
+        <div class="brand-name">{{ company.trade_name|default:company.corporate_name }}</div>
+      {% else %}
+        <img class="brand-logo" src="https://dummyimage.com/144x144/1f2937/ffffff&text=LD" alt="Loja Digital">
+        <div class="brand-name">Loja Digital</div>
+      {% endif %}
+      <div class="brand-sub">Bem-vindo! Entre para acessar o painel.</div>
+    </div>
+  </div>
+</header>
+
+<main class="container auth-wrap py-3 py-md-4">
   <div class="row justify-content-center">
-    <div class="col-md-6 col-lg-5">
-      <div class="card card-clean p-4 p-md-5">
-        <div class="text-center mb-3">
-          <span class="icon-lock me-2"></span>
-          <h1 class="h4 d-inline align-middle m-0">Entrar</h1>
+    <div class="col-sm-10 col-md-7 col-lg-5 col-xl-4">
+      <div class="card card-clean p-3 p-md-4">
+
+        <div class="text-center mb-2">
+          <h1 class="h5 title m-0">Entrar</h1>
+          <div class="text-muted small">Use seu usuário e senha de acesso</div>
         </div>
 
-        <form method="post" novalidate>
+        <form method="post" novalidate id="loginForm">
           {% csrf_token %}
 
           {% if form.non_field_errors %}
-            <div class="alert alert-danger py-2">
+            <div class="alert alert-danger py-2 small mb-2">
               {% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}
             </div>
           {% endif %}
 
-          <div class="mb-3">
-            <label class="form-label" for="id_username">Usuário</label>
-            <input
-              type="text"
-              name="username"
-              id="id_username"
-              required
-              autofocus
-              class="form-control {% if form.username.errors %}is-invalid{% endif %}"
-              value="{{ form.data.username|default_if_none:'' }}">
+          <div class="mb-2">
+            <label class="form-label small mb-1" for="id_username">Usuário</label>
+            <div class="input-group">
+              <span class="input-group-text">👤</span>
+              <input
+                type="text"
+                name="username"
+                id="id_username"
+                autocomplete="username"
+                required
+                autofocus
+                class="form-control {% if form.username.errors %}is-invalid{% endif %}"
+                value="{{ form.data.username|default_if_none:'' }}">
+            </div>
             {% if form.username.errors %}
-              <div class="invalid-feedback">
+              <div class="invalid-feedback d-block small">
                 {% for e in form.username.errors %}{{ e }}{% endfor %}
               </div>
             {% endif %}
           </div>
 
-          <div class="mb-3">
-            <label class="form-label" for="id_password">Senha</label>
+          <div class="mb-2">
+            <label class="form-label small mb-1" for="id_password">Senha</label>
             <div class="input-group">
+              <span class="input-group-text">🔒</span>
               <input
                 type="password"
                 name="password"
                 id="id_password"
+                autocomplete="current-password"
                 required
                 class="form-control {% if form.password.errors %}is-invalid{% endif %}">
-              <button class="btn-eye px-3" type="button" id="togglePwd" aria-label="Mostrar/ocultar senha">👁️</button>
-              {% if form.password.errors %}
-                <div class="invalid-feedback d-block">
-                  {% for e in form.password.errors %}{{ e }}{% endfor %}
-                </div>
-              {% endif %}
+              <button class="btn-eye" type="button" id="togglePwd" aria-label="Mostrar/ocultar senha">👁️</button>
             </div>
+            <div id="capsHint" class="caps-hint small mt-1 d-none">Caps Lock está ativo.</div>
+            {% if form.password.errors %}
+              <div class="invalid-feedback d-block small">
+                {% for e in form.password.errors %}{{ e }}{% endfor %}
+              </div>
+            {% endif %}
           </div>
 
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="form-check">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="form-check small">
               <input class="form-check-input" type="checkbox" value="1" id="id_remember" name="remember">
               <label class="form-check-label" for="id_remember">Lembrar-me</label>
             </div>
-
-            {# Só mostra se a rota existir (evita NoReverseMatch) #}
             {% url 'password_reset' as password_reset_url %}
             {% if password_reset_url %}
               <a class="small" href="{{ password_reset_url }}">Esqueceu a senha?</a>
@@ -93,16 +178,28 @@
           </div>
 
           {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-          <button class="btn btn-primary w-100 py-2" type="submit">Acessar</button>
+
+          <button class="btn btn-brand w-100" type="submit" id="btnSubmit">
+            <span class="btn-text">Acessar</span>
+            <span class="spinner ms-2 d-none" aria-hidden="true"></span>
+          </button>
         </form>
 
-        <p class="small text-muted mt-3 mb-0 text-center">
-          Use o usuário criado no <em>createsuperuser</em>.
-        </p>
-
-        <div class="text-center mt-3">
-          <a class="small" href="{% url 'home' %}">← Voltar à loja</a>
+        <div class="help-links text-center mt-2 small">
+          {% if company %}
+            {% if company.phone_e164 %}
+              <a href="{{ company.whatsapp_link|default:'#' }}" target="_blank" rel="noopener">Precisa de ajuda? Fale no WhatsApp</a>
+            {% endif %}
+          {% endif %}
         </div>
+
+        <p class="small text-muted mt-2 mb-0 text-center">
+          Dica: o primeiro acesso usa o usuário criado no <em>createsuperuser</em>.
+        </p>
+      </div>
+
+      <div class="page-footer text-center small mt-2">
+        © {% now "Y" %} {% if company %}{{ company.trade_name|default:company.corporate_name }}{% else %}Loja Digital{% endif %}
       </div>
     </div>
   </div>
@@ -111,10 +208,37 @@
 <script>
 (function(){
   const btn = document.getElementById('togglePwd');
-  const input = document.getElementById('id_password');
-  if (btn && input){
+  const pwd = document.getElementById('id_password');
+  const caps = document.getElementById('capsHint');
+  const form = document.getElementById('loginForm');
+  const submit = document.getElementById('btnSubmit');
+  const btnText = submit ? submit.querySelector('.btn-text') : null;
+  const spin = submit ? submit.querySelector('.spinner') : null;
+
+  // Mostrar/ocultar senha
+  if (btn && pwd){
     btn.addEventListener('click', ()=>{
-      input.type = (input.type === 'password') ? 'text' : 'password';
+      pwd.type = (pwd.type === 'password') ? 'text' : 'password';
+      pwd.focus();
+    });
+    // Aviso de CapsLock
+    ['keyup','keydown'].forEach(evt=>{
+      pwd.addEventListener(evt, (e)=>{
+        if (e.getModifierState && e.getModifierState('CapsLock')){
+          caps && caps.classList.remove('d-none');
+        }else{
+          caps && caps.classList.add('d-none');
+        }
+      });
+    });
+  }
+
+  // Spinner no submit
+  if (form && submit){
+    form.addEventListener('submit', ()=>{
+      submit.disabled = true;
+      spin && spin.classList.remove('d-none');
+      btnText && (btnText.textContent = 'Entrando...');
     });
   }
 })();
