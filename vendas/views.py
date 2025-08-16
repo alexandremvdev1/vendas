@@ -981,6 +981,7 @@ def order_send_reminder(request, order_id):
     return redirect(next_url)
 
 # -------------------- Dashboard Mobile --------------------
+@login_required
 def mobile_dashboard(request):
     days = int(request.GET.get("days", 7))
     tz = timezone.get_current_timezone()
