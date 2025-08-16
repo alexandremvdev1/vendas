@@ -1,4 +1,4 @@
-# vendas/views.py
+# vendas/views.py — imports limpos
 import os
 import re
 import json
@@ -6,10 +6,10 @@ import logging
 from decimal import Decimal
 from datetime import timedelta, datetime, time
 from urllib.parse import urlparse
-from django.db import transaction
-from .models import Address, ProductType
 
 import mercadopago
+from cloudinary.utils import private_download_url, cloudinary_url
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -23,15 +23,18 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
 
-from cloudinary.utils import private_download_url, cloudinary_url
-
-from .emails import send_order_created_email, send_payment_reminder_email
 from .forms import CheckoutForm
+from .emails import (
+    send_order_created_email,
+    send_payment_reminder_email,
+    send_order_shipped_email,
+)
 from .models import (
     Product, Customer, Order, DownloadLink, Company,
+    Address, ProductType, ShippingStatus,
     get_mp_access_token, get_mp_public_key,
-    Address, ProductType,
 )
 
 logger = logging.getLogger(__name__)
@@ -1069,48 +1072,48 @@ def mobile_dashboard(request):
     }
     return render(request, "vendas/mobile_dashboard.html", ctx)
 
-# vendas/views.py
-from django.contrib import messages
-from django.utils import timezone
-from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect
-
-from .models import Order, ProductType, ShippingStatus
-
 @login_required
 @require_POST
-def order_shipping_update(request, order_id: int):
+def order_shipping_update(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
 
-    # Só faz sentido para produto físico
-    if not order.product or order.product.product_type != ProductType.PHYSICAL:
-        messages.error(request, "Este pedido não requer envio.")
-        return redirect(request.POST.get("next") or "orders_list")
+    next_url = request.POST.get("next") or reverse("orders_list")
 
-    shipped_flag   = request.POST.get("shipped") in ("on", "true", "1", "yes")
-    tracking_code  = (request.POST.get("tracking_code") or "").strip()
+    # Só permite mudar envio se estiver pago (opcional, mas recomendado)
+    if order.status != "paid":
+        messages.warning(request, "Só é possível marcar envio para pedidos pagos.")
+        return redirect(next_url)
 
-    # 🔧 aceita ambos nomes por compatibilidade; preferimos tracking_carrier
-    carrier = (
-        (request.POST.get("tracking_carrier") or "").strip()
-        or (request.POST.get("shipping_carrier") or "").strip()
-    )
-    other_name = (request.POST.get("carrier_name") or "").strip()
-    if carrier == "outro" and other_name:
-        carrier = other_name
+    was = order.shipping_status
 
-    order.tracking_code   = tracking_code
-    order.tracking_carrier = carrier
+    shipped_flag = request.POST.get("shipped") == "on"
+    code   = (request.POST.get("tracking_code") or "").strip()
+    carrier = (request.POST.get("carrier") or "").strip()
 
     if shipped_flag:
-        order.shipping_status = ShippingStatus.SHIPPED
-        if not order.shipped_at:
-            order.shipped_at = timezone.now()
+        order.mark_shipped(tracking_code=code or order.tracking_code,
+                           carrier=carrier or order.tracking_carrier,
+                           save=True)
+        # Se acabou de virar “Enviado”, dispara e-mail
+        if was != ShippingStatus.SHIPPED:
+            try:
+                send_order_shipped_email(order, request=request)
+                messages.success(request, f"Pedido #{order.id} marcado como Enviado e e-mail enviado ao cliente.")
+            except Exception as e:
+                messages.warning(request, f"Pedido #{order.id} marcado como Enviado, mas houve falha ao enviar e-mail: {e}")
     else:
-        order.shipping_status = ShippingStatus.PENDING
-        order.shipped_at = None
+        order.mark_pending_shipping(save=True)
+        messages.info(request, f"Pedido #{order.id} voltou para 'Pendente de envio'.")
 
-    order.save(update_fields=["tracking_code", "tracking_carrier", "shipping_status", "shipped_at"])
-    messages.success(request, "Informações de envio atualizadas.")
-    return redirect(request.POST.get("next") or "orders_list")
+    # Se alterou código/transportadora sem marcar/ desmarcar, só persiste os campos:
+    if not shipped_flag and (code or carrier):
+        # atualiza campos sem mudar o status
+        if code:
+            order.tracking_code = code
+        if carrier:
+            order.tracking_carrier = carrier
+        order.save(update_fields=["tracking_code", "tracking_carrier"])
+        messages.success(request, f"Rastreio do pedido #{order.id} atualizado.")
+
+    return redirect(next_url)
+

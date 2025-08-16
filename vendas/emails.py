@@ -307,3 +307,145 @@ def send_payment_reminder_email(order, request=None):
         fail_silently=not getattr(settings, "DEBUG", False),
     )
     return bool(sent)
+
+from django.utils import timezone
+
+def _tracking_url(carrier: str, code: str) -> str:
+    """
+    Tenta montar uma URL de rastreio clicável por transportadora.
+    Cai em uma busca no Google se não reconhecer.
+    """
+    c = (carrier or "").strip().lower()
+    code = (code or "").strip()
+    if not code:
+        return ""
+    if "correios" in c:
+        return f"https://rastreamento.correios.com.br/app/index.php?objeto={code}"
+    if "jadlog" in c:
+        return f"https://www.jadlog.com.br/tracking?cte={code}"
+    if "j&t" in c or "jt" in c:
+        return f"https://www.jtexpress.com.br/track?waybill={code}"
+    if "loggi" in c:
+        return f"https://www.loggi.com/track/?code={code}"
+    if "sequoia" in c:
+        return f"https://rastreamento.sequoialog.com.br/?codigo={code}"
+    # Fallback: pesquisa
+    q = f"{carrier} rastreio {code}".strip()
+    from urllib.parse import quote_plus
+    return f"https://www.google.com/search?q={quote_plus(q)}"
+
+def send_order_shipped_email(order, request=None):
+    """
+    E-mail quando o pedido (físico) é marcado como ENVIADO.
+    Inclui código de rastreio, transportadora, data e endereço de entrega.
+    """
+    # Só para produto físico, pago, com e-mail do cliente
+    if not getattr(order.product, "is_physical", False):
+        return
+    to = [getattr(order.customer, "email", None)]
+    if not to[0]:
+        return
+
+    brand   = _brand_name()
+    produto = order.product.title
+    valor   = fmt_brl(order.amount)
+    when    = order.shipped_at or timezone.now()
+    when_str = when.strftime("%d/%m/%Y %H:%M")
+
+    code    = (order.tracking_code or "").strip()
+    carrier = (order.tracking_carrier or "").strip() or "Transportadora"
+    track_url = _tracking_url(carrier, code) if code else ""
+
+    # Link para visualizar pedido / status de pagamento (opcional)
+    pay_path = reverse("payment_success", args=[order.id]) if order.status == "paid" else reverse("payment_pending", args=[order.id])
+    pay_url  = _abs_url(pay_path, request=request)
+
+    # Endereço
+    addr_title = ""
+    addr_text  = ""
+    if order.shipping_address:
+        addr_title = order.shipping_address.recipient_name or order.customer.full_name
+        addr_text  = order.shipping_address.full_address
+
+    assunto   = f"📦 Seu pedido #{order.id} foi enviado!"
+    preheader = f"Enviado em {when_str}. Rastreio {code or '—'} ({carrier})."
+
+    # Texto simples (fallback)
+    text_lines = [
+        f"{preheader}",
+        "",
+        f"Olá {order.customer.full_name},",
+        f"Seu pedido #{order.id} ({produto}) foi enviado em {when_str}.",
+        f"Valor: {valor}",
+        f"Transportadora: {carrier}",
+        f"Código de rastreio: {code or '—'}",
+    ]
+    if addr_title or addr_text:
+        text_lines += ["", "Endereço de entrega:", f"{addr_title}", f"{addr_text}"]
+    if track_url:
+        text_lines += ["", f"Acompanhe seu pacote: {track_url}"]
+    text_lines += ["", f"Ver detalhes do pedido: {pay_url}", "", f"— {brand}"]
+    text = "\n".join(text_lines)
+
+    # HTML “top”
+    track_btn = _btn(track_url, "🔍 Acompanhar rastreio") if track_url else ""
+    detalhes_btn = _btn(pay_url, "Ver detalhes do pedido", bg="#0ea5e9")
+
+    addr_html = ""
+    if addr_title or addr_text:
+        addr_html = f"""
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-top:10px">
+          <tr>
+            <td style="padding:12px 16px;font-size:14px;">
+              <div style="font-weight:700;margin-bottom:6px">Endereço de entrega</div>
+              <div>{addr_title or ''}</div>
+              <div style="color:#475569">{addr_text or ''}</div>
+            </td>
+          </tr>
+        </table>
+        """
+
+    inner = f"""
+      <h2 style="margin:0 0 .25rem 0">📦 Seu pedido foi enviado!</h2>
+      <p style="margin:.25rem 0 1rem 0;color:#334155">
+        Olá <strong>{order.customer.full_name}</strong>, seu pedido
+        <strong>#{order.id}</strong> do produto <strong>{produto}</strong> foi postado em <strong>{when_str}</strong>.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+        <tr>
+          <td style="padding:12px 16px;font-size:14px;">
+            <div><strong>Produto:</strong> {produto}</div>
+            <div><strong>Valor:</strong> {valor}</div>
+            <div><strong>Status pagamento:</strong> {"<span style='color:#16a34a'>Pago</span>" if order.status=='paid' else "<span style='color:#dc2626'>Pendente</span>"}</div>
+            <div style="margin-top:8px"><strong>Transportadora:</strong> {carrier}</div>
+            <div><strong>Código de rastreio:</strong> {code or "—"}</div>
+            <div><strong>Data de envio:</strong> {when_str}</div>
+          </td>
+        </tr>
+      </table>
+
+      <div style="margin:16px 0 8px 0">
+        {track_btn}
+        <span style="display:inline-block;width:8px"></span>
+        {detalhes_btn}
+      </div>
+
+      {addr_html}
+
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0">
+
+      <p style="margin:.5rem 0 0 0;font-size:14px;">
+        Qualquer dúvida, é só responder este e-mail. Obrigado por comprar com <strong>{brand}</strong>! ✨
+      </p>
+    """
+    html = _mail_wrapper(inner, preheader=preheader)
+
+    msg = EmailMultiAlternatives(
+        subject=assunto,
+        body=text,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=to
+    )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=not getattr(settings, "DEBUG", False))
