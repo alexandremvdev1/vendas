@@ -4,18 +4,19 @@ import re
 import json
 import logging
 from decimal import Decimal
-from datetime import timedelta
+from datetime import timedelta, datetime, time
 from urllib.parse import urlparse
-from .models import Product, Customer, Order, DownloadLink, get_mp_access_token, Company
-import mercadopago
+from django.db import transaction
+from .models import Address, ProductType
 
+import mercadopago
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, DecimalField, Q, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Count, DecimalField, IntegerField, Q, Sum, Value as V
+from django.db.models.functions import Coalesce, TruncDate
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -25,27 +26,18 @@ from django.views.decorators.http import require_POST
 
 from cloudinary.utils import private_download_url, cloudinary_url
 
-from .forms import CheckoutForm
 from .emails import send_order_created_email, send_payment_reminder_email
-from .models import Product, Customer, Order, DownloadLink, get_mp_access_token
+from .forms import CheckoutForm
+from .models import (
+    Product, Customer, Order, DownloadLink, Company,
+    get_mp_access_token, get_mp_public_key,
+    Address, ProductType,
+)
 
 logger = logging.getLogger(__name__)
 
-# (Opcional) public key – não é necessária para Checkout Pro, mas mantemos fallback
-try:
-    from .models import get_mp_public_key
-except Exception:
-    def get_mp_public_key():
-        return getattr(settings, "MP_PUBLIC_KEY", "")
-
-
 # -------------------- Helpers de preço (promoção) --------------------
 def _effective_price(product: Product) -> Decimal:
-    """
-    Preço vigente do produto considerando promoção.
-    Funciona com os campos: promo_price/promotional_price/price_promo e
-    flags: promo_active/is_promo/is_on_promo (se existirem).
-    """
     promo_price = (
         getattr(product, "promo_price", None)
         or getattr(product, "promotional_price", None)
@@ -60,14 +52,9 @@ def _effective_price(product: Product) -> Decimal:
         if hasattr(product, "is_on_promo") else
         None
     )
-
     if promo_price and (promo_flag is None or bool(promo_flag) is True):
-        try:
-            return Decimal(promo_price)
-        except Exception:
-            pass
+        return Decimal(promo_price)
     return Decimal(product.price)
-
 
 # -------------------- Mercado Pago: helpers --------------------
 def mp_sdk():
@@ -77,29 +64,19 @@ def mp_sdk():
         raise RuntimeError("MP Access Token ausente")
     return mercadopago.SDK(token)
 
-
 def _ensure_external_ref(order: Order):
     if not order.external_ref:
         order.external_ref = f"order-{order.pk}"
         order.save(update_fields=["external_ref"])
 
-
 def build_mp_notification_url(request) -> str:
-    """
-    Retorna URL pública/https para o webhook do MP.
-    - Usa settings.MP_WEBHOOK_URL se existir.
-    - Senão, monta via request e só aceita se for https e não localhost.
-    - Se não houver URL pública válida, retorna "" (não envia para o MP).
-    """
     configured = getattr(settings, "MP_WEBHOOK_URL", "").strip()
     if configured:
         return configured
-
     try:
         url = request.build_absolute_uri(reverse("mp_webhook"))
     except Exception:
         return ""
-
     p = urlparse(url)
     host = (p.hostname or "").lower()
     if p.scheme != "https":
@@ -108,20 +85,13 @@ def build_mp_notification_url(request) -> str:
         return ""
     return url
 
-
 # -------------------- PIX (Payments API) --------------------
 def create_pix_payment(product, customer, order, request):
-    """
-    Cria pagamento Pix no MP (/v1/payments) e salva QR/código no pedido.
-    Idempotente: se o pedido já tem payment_id, não cria outro.
-    """
     _ensure_external_ref(order)
-
-    if order.payment_id:  # já existe um pagamento vinculado a este pedido
+    if order.payment_id:
         logger.info("PIX: pulando criação, order %s já possui payment_id %s", order.id, order.payment_id)
         return {"skipped": True, "reason": "already_has_payment_id"}
 
-    # Garante que o valor do pedido está alinhado com o preço vigente
     current_price = _effective_price(product)
     if order.amount != current_price:
         order.amount = current_price
@@ -140,7 +110,7 @@ def create_pix_payment(product, customer, order, request):
         payer["identification"] = {"type": "CPF", "number": cpf_digits}
 
     body = {
-        "transaction_amount": float(order.amount),  # <<< usa o valor do pedido
+        "transaction_amount": float(order.amount),
         "description": product.title,
         "payment_method_id": "pix",
         "external_reference": order.external_ref,
@@ -177,15 +147,9 @@ def create_pix_payment(product, customer, order, request):
     order.save(update_fields=["payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return resp
 
-
 def _refresh_pix_from_mp(order: Order):
-    """
-    Reconsulta /v1/payments para preencher qr_code/qr_code_base64/ticket
-    e também aplica status aprovado/cancelado se já mudou.
-    """
     if not order.payment_id:
         return False
-
     sdk = mp_sdk()
     result = sdk.payment().get(order.payment_id)
     status_code = result.get("status")
@@ -199,7 +163,6 @@ def _refresh_pix_from_mp(order: Order):
         return False
 
     status = (res.get("status") or "").lower()
-
     if order.status == "pending":
         if status == "approved":
             order.mark_paid()
@@ -228,14 +191,8 @@ def _refresh_pix_from_mp(order: Order):
         return True
     return False
 
-
 # -------------------- Checkout Pro (Cartão) --------------------
 def create_card_preference(product, customer, order, request):
-    """
-    Cria uma Preference (Checkout Pro) só para pagamento com CARTÃO.
-    Salva preference_id no pedido e retorna a URL (init_point/sandbox_init_point).
-    Idempotente: tenta reusar preference existente.
-    """
     _ensure_external_ref(order)
     sdk = mp_sdk()
 
@@ -259,7 +216,7 @@ def create_card_preference(product, customer, order, request):
             "title": product.title,
             "quantity": 1,
             "currency_id": "BRL",
-            "unit_price": float(order.amount),  # <<< valor do pedido (promo incluída)
+            "unit_price": float(order.amount),
             "description": f"Pedido {order.external_ref}"
         }],
         "payer": payer,
@@ -279,7 +236,6 @@ def create_card_preference(product, customer, order, request):
     if notification_url:
         pref_body["notification_url"] = notification_url
 
-    # Reusar preference existente se possível
     if order.preference_id:
         try:
             res = sdk.preference().get(order.preference_id)
@@ -308,11 +264,7 @@ def create_card_preference(product, customer, order, request):
         raise RuntimeError("Preference criada, mas init_point está vazio.")
     return url
 
-
 def start_card_checkout(request, order_id):
-    """
-    Inicia/continua o Checkout Pro (redireciona para o init_point).
-    """
     order = get_object_or_404(Order.objects.select_related("product", "customer"), pk=order_id)
 
     if order.payment_type != "card":
@@ -333,15 +285,9 @@ def start_card_checkout(request, order_id):
             "order": order,
             "error": "Não foi possível iniciar o checkout do cartão. Verifique as credenciais e tente novamente."
         })
-
     return redirect(url)
 
-
 def mp_return(request):
-    """
-    Retorno do Checkout Pro (back_urls).
-    Consulta o pagamento (se houver payment_id) e atualiza o status do pedido.
-    """
     payment_id = request.GET.get("payment_id") or request.GET.get("collection_id")
     preference_id = request.GET.get("preference_id")
     ext_ref = request.GET.get("external_reference") or ""
@@ -357,7 +303,6 @@ def mp_return(request):
         order = Order.objects.filter(payment_id=str(payment_id)).first()
     if not order and preference_id:
         order = Order.objects.filter(preference_id=str(preference_id)).order_by("-id").first()
-
     if not order:
         return redirect("home")
 
@@ -378,61 +323,99 @@ def mp_return(request):
         return redirect("payment_success", order_id=order.id)
     return redirect("payment_pending", order_id=order.id)
 
-
 # -------------------- Pedido / Páginas principais --------------------
-def get_or_reuse_pending_order(product: Product, customer: Customer, payment_type: str):
+def get_or_reuse_pending_order(
+    product: Product,
+    customer: Customer,
+    payment_type: str,
+    shipping_address: Address | None = None,
+):
     """
-    Retorna (order, created). Se já existir pedido PENDENTE, não expirado,
-    para o mesmo cliente+produto+método, reusa. Senão, cria um novo.
+    Retorna (order, created).
+
+    - Produto FÍSICO:
+        * Reusa apenas se houver um pendente com o MESMO endereço.
+        * Se existir pendente sem endereço e você passou um endereço agora, adota esse endereço.
+        * Se já houver endereço diferente, cria um novo pedido (não sobrescreve).
+    - Produto DIGITAL:
+        * Ignora endereço e reusa o mais recente pendente.
     """
-    existing = (
-        Order.objects
-        .filter(
+    base_qs = (
+        Order.objects.filter(
             product=product,
             customer=customer,
             payment_type=payment_type,
             status="pending",
-            expires_at__gte=timezone.now()
+            expires_at__gte=timezone.now(),
         )
         .order_by("-created_at")
-        .first()
     )
-    if existing:
-        return existing, False
 
+    is_physical = getattr(product, "product_type", None) == ProductType.PHYSICAL
+
+    if is_physical:
+        # 1) Se enviaram um endereço, tente reusar exatamente com o mesmo endereço
+        if shipping_address:
+            same_addr = base_qs.filter(shipping_address=shipping_address).first()
+            if same_addr:
+                return same_addr, False
+
+            # 2) Se há um pendente sem endereço, adota o informado agora
+            no_addr = base_qs.filter(shipping_address__isnull=True).first()
+            if no_addr:
+                no_addr.shipping_address = shipping_address
+                no_addr.save(update_fields=["shipping_address"])
+                return no_addr, False
+
+            # 3) Existe pendente, mas com outro endereço → não mexe, cria novo
+            # (caindo para criação abaixo)
+        else:
+            # Não veio endereço ainda → reusa um pendente SEM endereço (se houver)
+            no_addr = base_qs.filter(shipping_address__isnull=True).first()
+            if no_addr:
+                return no_addr, False
+
+    else:
+        # DIGITAL: reusa qualquer pendente
+        existing = base_qs.first()
+        if existing:
+            # (defensivo) se por acaso tiver endereço, zera
+            if existing.shipping_address_id is not None:
+                existing.shipping_address = None
+                existing.save(update_fields=["shipping_address"])
+            return existing, False
+
+    # Criar novo pedido
     with transaction.atomic():
         order = Order.objects.create(
             product=product,
             customer=customer,
-            amount=_effective_price(product),  # <<< já nasce com o preço vigente
+            amount=_effective_price(product),
             status="pending",
             payment_type=payment_type,
             expires_at=timezone.now() + timedelta(days=2),
+            shipping_address=shipping_address if is_physical else None,
         )
     return order, True
 
 
+
 def home(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
-
     now = timezone.now()
     start_30d = now - timedelta(days=30)
 
-    # Apenas pedidos pagos nos últimos 30 dias
     paid_30d = Order.objects.filter(status="paid", created_at__gte=start_30d)
-
     receita_30d = paid_30d.aggregate(
         total=Coalesce(
             Sum("amount"),
-            Value(Decimal("0.00")),
+            V(Decimal("0.00")),
             output_field=DecimalField(max_digits=12, decimal_places=2),
         )
     )["total"] or Decimal("0.00")
-
     pedidos_30d = paid_30d.count()
     ticket_30d = (receita_30d / pedidos_30d) if pedidos_30d else Decimal("0.00")
-
-    today_new = Product.objects.filter(active=True, created_at__date=now.date()).count()
+    today_new = Product.objects.filter(active=True, created_at__date=timezone.localdate()).count()
 
     ctx = {
         "products": products,
@@ -443,26 +426,30 @@ def home(request):
     }
     return render(request, "vendas/home.html", ctx)
 
-
-# --- checkout_view: grava amount com o preço vigente e segue o fluxo normal ---
+# --- checkout_view com endereço de envio para produto físico ---
 def checkout_view(request, slug, token):
-    """
-    Recebe dados do cliente e, conforme o botão clicado (Pix/Cartão),
-    inicia/continua o pagamento no mesmo pedido pendente.
-    """
     product = get_object_or_404(Product, slug=slug, checkout_token=token, active=True)
+    needs_shipping = (getattr(product, "product_type", None) == ProductType.PHYSICAL)
 
-    # Carrega a empresa ativa para exibir no rodapé (centralizado no template)
-    company = Company.objects.filter(active=True).order_by("-created_at").only(
-        "id", "trade_name", "corporate_name", "cnpj", "address", "phone_e164", "logo"
-    ).first()
+    company = (Company.objects.filter(active=True)
+               .order_by("-created_at")
+               .only("id", "trade_name", "corporate_name", "cnpj", "address", "phone_e164", "logo")
+               .first())
+
+    def norm_cep(v: str) -> str:
+        d = re.sub(r"\D", "", v or "")
+        return f"{d[:5]}-{d[5:]}" if len(d) == 8 else (v or "")
 
     if request.method == "POST":
         form = CheckoutForm(request.POST)
+        address_errors = []
+        address_form_data = {}
+        addresses_for_customer = []
+
         if form.is_valid():
             data = form.cleaned_data
 
-            # encontra ou cria cliente pelo CPF
+            # --- cliente (cria/atualiza por CPF) ---
             customer, _ = Customer.objects.get_or_create(
                 cpf=data["cpf"],
                 defaults={
@@ -471,7 +458,6 @@ def checkout_view(request, slug, token):
                     "phone": data.get("phone", ""),
                 },
             )
-            # atualiza dados se mudaram
             changed = False
             if customer.full_name != data["full_name"]:
                 customer.full_name = data["full_name"]; changed = True
@@ -482,26 +468,116 @@ def checkout_view(request, slug, token):
             if changed:
                 customer.save()
 
-            # método escolhido (default Pix)
+            shipping_address = None
+
+            # --- endereço (apenas se produto físico) ---
+            if needs_shipping:
+                # Endereços já salvos do cliente
+                addresses_for_customer = list(
+                    Address.objects.filter(customer=customer).order_by("-is_default", "-created_at")
+                )
+
+                # Descobre nomes reais dos campos do modelo
+                addr_fields = {f.name for f in Address._meta.get_fields()}
+                ZIP_FIELD = "zip_code" if "zip_code" in addr_fields else "cep"
+                DIST_FIELD = "district" if "district" in addr_fields else "neighborhood"
+
+                # Se escolheu um existente
+                addr_id = (request.POST.get("address_id") or "").strip()
+                if addr_id:
+                    shipping_address = Address.objects.filter(customer=customer, pk=addr_id).first()
+                    if not shipping_address:
+                        address_errors.append("Endereço selecionado não foi encontrado.")
+                else:
+                    # Lê nomes do template (zip_code/district), com fallback para cep/neighborhood
+                    raw_zip = (request.POST.get("zip_code") or request.POST.get("cep") or "").strip()
+                    zip_norm = norm_cep(raw_zip)
+
+                    label          = (request.POST.get("label") or "").strip()
+                    recipient_name = (request.POST.get("recipient_name") or data.get("full_name") or "").strip()
+                    street         = (request.POST.get("street") or "").strip()
+                    number         = (request.POST.get("number") or "").strip()
+                    complement     = (request.POST.get("complement") or "").strip()
+                    district_val   = (request.POST.get("district") or request.POST.get("neighborhood") or "").strip()
+                    city           = (request.POST.get("city") or "").strip()
+                    state          = (request.POST.get("state") or "").strip().upper()
+                    country        = (request.POST.get("country") or "Brasil").strip()
+
+                    # Mantém para re-renderizar o template (usa as chaves do template)
+                    address_form_data = {
+                        "label": label,
+                        "recipient_name": recipient_name,
+                        "zip_code": zip_norm,
+                        "street": street,
+                        "number": number,
+                        "complement": complement,
+                        "district": district_val,
+                        "city": city,
+                        "state": state,
+                        "country": country,
+                    }
+
+                    # validações mínimas
+                    if not all([zip_norm, street, number, district_val, city, state]):
+                        address_errors.append("Preencha todos os campos de endereço obrigatórios.")
+                    if len(re.sub(r"\D", "", zip_norm)) != 8:
+                        address_errors.append("CEP inválido (8 dígitos).")
+                    if not re.fullmatch(r"[A-Z]{2}", state):
+                        address_errors.append("UF inválida.")
+
+                    # cria o endereço se válido
+                    if not address_errors:
+                        kwargs = {
+                            "customer": customer,
+                            "label": label,
+                            "recipient_name": recipient_name,
+                            "street": street,
+                            "number": number,
+                            "complement": complement,
+                            "city": city,
+                            "state": state,
+                            "country": country,
+                        }
+                        kwargs[ZIP_FIELD] = zip_norm
+                        kwargs[DIST_FIELD] = district_val
+                        shipping_address = Address.objects.create(**kwargs)
+
+                if not shipping_address:
+                    # Reexibe com erros e mantém campos
+                    others = (Product.objects.filter(active=True)
+                              .exclude(pk=product.pk)
+                              .order_by("-created_at")[:12])
+                    ctx = {
+                        "product": product,
+                        "form": form,
+                        "others": others,
+                        "company": company,
+                        "needs_shipping": True,
+                        "addresses": addresses_for_customer,
+                        "address_errors": address_errors,
+                        "address_form_data": address_form_data,
+                        "show_address_form": True,
+                    }
+                    return render(request, "vendas/checkout.html", ctx)
+
+            # --- método de pagamento ---
             pay_method = (request.POST.get("pay_method") or "pix").lower().strip()
             payment_type = "card" if pay_method == "card" else "pix"
 
-            # preço vigente no momento do checkout (considera promoção)
-            unit_price = _effective_price(product)  # deve retornar Decimal
+            # --- preço vigente ---
+            unit_price = _effective_price(product)
             if not isinstance(unit_price, Decimal):
                 unit_price = Decimal(str(unit_price))
 
-            # Reusa pedido pendente se já houver, senão cria novo
-            order, created = get_or_reuse_pending_order(product, customer, payment_type)
+            # --- reusar/criar pedido (considera endereço se físico) ---
+            order, created = get_or_reuse_pending_order(product, customer, payment_type, shipping_address)
 
-            # garanta que o valor do pedido reflita o preço vigente
             if order.amount != unit_price:
                 order.amount = unit_price
                 order.save(update_fields=["amount"])
 
             _ensure_external_ref(order)
 
-            # e-mail: pedido criado (só quando criado agora)
             if created:
                 try:
                     send_order_created_email(order, request=request)
@@ -509,57 +585,65 @@ def checkout_view(request, slug, token):
                     logger.warning("Falha ao enviar e-mail de pedido criado (order %s): %s", order.id, e)
 
             if payment_type == "card":
-                # redireciona para o Checkout Pro do Mercado Pago
                 return redirect("pay_card", order_id=order.id)
 
-            # Pix: cria pagamento apenas se ainda não existir payment_id
             try:
                 create_pix_payment(product, customer, order, request)
             except Exception as e:
                 logger.exception("Erro ao criar pagamento Pix (order %s): %s", order.id, e)
-                return render(
-                    request,
-                    "vendas/pending.html",
-                    {
-                        "order": order,
-                        "product": product,
-                        "company": company,  # <-- inclui a empresa no contexto
-                        "error": "Não foi possível iniciar o Pix agora. Verifique o token do MP e os logs.",
-                    },
-                )
+                return render(request, "vendas/pending.html", {
+                    "order": order,
+                    "product": product,
+                    "company": company,
+                    "error": "Não foi possível iniciar o Pix agora. Verifique o token do MP e os logs.",
+                })
 
             return redirect("payment_pending", order_id=order.id)
 
-        # form inválido → reexibe com erros + outros produtos
-        others = Product.objects.filter(active=True).exclude(pk=product.pk).order_by("-created_at")[:12]
-        return render(
-            request,
-            "vendas/checkout.html",
-            {"product": product, "form": form, "others": others, "company": company},  # <-- inclui company
-        )
+        # form inválido → reexibe
+        others = (Product.objects.filter(active=True)
+                  .exclude(pk=product.pk)
+                  .order_by("-created_at")[:12])
+        ctx = {
+            "product": product,
+            "form": form,
+            "others": others,
+            "company": company,
+            "needs_shipping": needs_shipping,
+            "show_address_form": needs_shipping,
+            "addresses": [],
+            "address_errors": [],
+            "address_form_data": {},
+        }
+        return render(request, "vendas/checkout.html", ctx)
 
-    # GET → formulário em branco + outros produtos (para o carrossel)
+    # GET
     form = CheckoutForm()
-    others = Product.objects.filter(active=True).exclude(pk=product.pk).order_by("-created_at")[:12]
-    return render(
-        request,
-        "vendas/checkout.html",
-        {"product": product, "form": form, "others": others, "company": company},  # <-- inclui company
-    )
+    others = (Product.objects.filter(active=True)
+              .exclude(pk=product.pk)
+              .order_by("-created_at")[:12])
+    ctx = {
+        "product": product,
+        "form": form,
+        "others": others,
+        "company": company,
+        "needs_shipping": needs_shipping,
+        "show_address_form": needs_shipping,
+        "addresses": [],
+        "address_errors": [],
+        "address_form_data": {},
+    }
+    return render(request, "vendas/checkout.html", ctx)
 
 
 def payment_pending(request, order_id):
-    """
-    Garante QR/código Pix para o MESMO pedido (sem criar novo pedido).
-    """
-    order = get_object_or_404(Order.objects.select_related("product", "customer"), pk=order_id)
+    order = get_object_or_404(Order.objects.select_related("product", "customer", "shipping_address"), pk=order_id)
 
     if order.is_expired and order.status == "pending":
         order.mark_cancelled()
         order.refresh_from_db(fields=["status"])
         return render(request, "vendas/pending.html", {"order": order})
 
-    # Garantir QR para Pix pendente
     if order.status == "pending" and order.payment_type == "pix":
         try:
             if order.payment_id:
@@ -580,46 +664,35 @@ def payment_pending(request, order_id):
     order.refresh_from_db(fields=["status", "payment_id", "pix_qr_code", "pix_qr_base64", "pix_ticket_url"])
     return render(request, "vendas/pending.html", {"order": order})
 
-
 def payment_success(request, order_id):
-    order = get_object_or_404(Order, pk=order_id)
+    order = get_object_or_404(Order.objects.select_related("product", "shipping_address"), pk=order_id)
     if order.status != "paid":
         raise Http404("Pagamento ainda não confirmado.")
-    if not hasattr(order, "download_link"):
-        DownloadLink.create_for_order(order)
-    return render(request, "vendas/success.html", {"order": order, "link": order.download_link})
-
+    link = None
+    if order.product.product_type == ProductType.DIGITAL:
+        if not hasattr(order, "download_link"):
+            DownloadLink.create_for_order(order)
+        link = order.download_link
+    return render(request, "vendas/success.html", {"order": order, "link": link, "is_digital": order.product.product_type == ProductType.DIGITAL})
 
 # -------------------- DOWNLOAD SEGURO (Cloudinary) --------------------
 def _guess_candidates(asset):
-    """
-    Gera candidatos de public_id/format/resource_type/type.
-    Cobre prefixo 'media/' (django-cloudinary-storage) e extensão no nome.
-    """
     public_id_attr = getattr(asset, "public_id", "") or ""
     name = getattr(asset, "name", "") or public_id_attr or str(asset) or ""
-
-    # extrai extensão do nome do arquivo (se houver)
     base = os.path.basename(name)
     ext = base.rsplit(".", 1)[-1].lower() if "." in base else None
 
-    # candidatos de public_id
     bases = {p for p in [public_id_attr, name] if p}
     pubs = []
     for pid in bases:
-        # original
         pubs.append(pid)
-        # sem 'media/'
         if pid.startswith("media/"):
             pubs.append(pid.split("media/", 1)[-1])
         else:
-            # com 'media/'
             pubs.append(f"media/{pid}")
-        # sem extensão
         if "." in pid:
             pubs.append(pid.rsplit(".", 1)[0])
 
-    # dedup
     seen = set()
     public_ids = []
     for p in pubs:
@@ -627,23 +700,14 @@ def _guess_candidates(asset):
             seen.add(p)
             public_ids.append(p)
 
-    # tipos possíveis
     resource_types = ["raw", "image"]
     delivery_types = ["upload", "private", "authenticated"]
-    formats = [ext, None]  # tenta com a extensão e sem
+    formats = [ext, None]
 
     return public_ids, formats, resource_types, delivery_types
 
-
 def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
-    """
-    Tenta 1) private_download_url (preferível p/ private/raw)
-          2) cloudinary_url assinado
-    """
-    # 1) private_download_url
     try:
-        # Para 'raw', o Cloudinary geralmente espera o public_id SEM extensão
-        # e o 'format' separado. Se não houver formato, pule esse método.
         if resource_type == "raw" and not file_format:
             raise ValueError("raw sem format -> pula private_download_url")
         url = private_download_url(
@@ -659,14 +723,12 @@ def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
     except Exception as e:
         logger.debug("private_download_url falhou (%s/%s/%s.%s): %s",
                      resource_type, delivery_type, public_id, file_format or "", e)
-
-    # 2) cloudinary_url assinado
     try:
         url, _ = cloudinary_url(
             public_id,
             resource_type=resource_type,
             type=delivery_type,
-            format=file_format,          # ok ser None
+            format=file_format,
             sign_url=True,
             expires_at=expires_at,
             attachment=True,
@@ -676,7 +738,6 @@ def _sign_url(public_id, file_format, resource_type, delivery_type, expires_at):
         logger.debug("cloudinary_url falhou (%s/%s/%s.%s): %s",
                      resource_type, delivery_type, public_id, file_format or "", e)
         return None
-
 
 def secure_download(request, token):
     link = get_object_or_404(DownloadLink, token=token)
@@ -690,7 +751,6 @@ def secure_download(request, token):
     public_ids, fmts, rtypes, dtypes = _guess_candidates(asset)
     expires_at = int((timezone.now() + timedelta(minutes=3)).timestamp())
 
-    # tenta várias combinações até achar uma válida
     for pid in public_ids:
         for rt in rtypes:
             for dt in dtypes:
@@ -703,7 +763,6 @@ def secure_download(request, token):
 
     logger.error("Cloudinary: resource not found. Tentativas: ids=%s", public_ids)
     raise Http404("Arquivo não encontrado no Cloudinary. Reenvie o arquivo no admin (RawMediaCloudinaryStorage).")
-
 
 # -------------------- Relatório --------------------
 @staff_member_required
@@ -730,7 +789,6 @@ def sales_report(request):
 
     return render(request, "vendas/report.html", {"agg": agg, "top": top, "start": start, "end": end})
 
-
 # -------------------- Status / Polling / Webhook --------------------
 def sync_payment_status_from_mp(order: Order):
     if order.status != "pending" or not order.payment_id:
@@ -745,7 +803,6 @@ def sync_payment_status_from_mp(order: Order):
         order.mark_cancelled()
     return order.status
 
-
 def order_status(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.is_expired and order.status == "pending":
@@ -754,13 +811,8 @@ def order_status(request, order_id):
         sync_payment_status_from_mp(order)
     return JsonResponse({"status": order.status})
 
-
 @csrf_exempt
 def mp_webhook(request):
-    """
-    Webhook do Mercado Pago: identifica o payment_id, consulta /v1/payments e
-    aplica o status ao pedido (paid/cancelled).
-    """
     try:
         body = request.body.decode("utf-8") if request.body else ""
     except Exception:
@@ -782,7 +834,6 @@ def mp_webhook(request):
     result = sdk.payment().get(payment_id)
     data = result.get("response", {}) or {}
 
-    # encontra o pedido
     order = None
     ext = (data.get("external_reference") or "")
     if ext.startswith("order-"):
@@ -798,7 +849,6 @@ def mp_webhook(request):
     if not order:
         return HttpResponse("order not found", status=200)
 
-    # aplica status
     if order.is_expired and order.status == "pending":
         order.mark_cancelled()
     else:
@@ -810,13 +860,11 @@ def mp_webhook(request):
 
     return HttpResponse("ok", status=200)
 
-
 # -------------------- Catálogo público --------------------
 def catalog(request):
     products = Product.objects.filter(active=True).order_by("-created_at")
-    company = Company.objects.filter(active=True).first()  # para logo/nome/whatsapp no template
+    company = Company.objects.filter(active=True).first()
 
-    # KPIs
     now = timezone.now()
     today = timezone.localdate()
     start_30 = now - timedelta(days=30)
@@ -827,7 +875,7 @@ def catalog(request):
     agg = paid_30_qs.aggregate(
         receita_30d=Coalesce(
             Sum("amount"),
-            Value(Decimal("0.00")),
+            V(Decimal("0.00")),
             output_field=DecimalField(max_digits=12, decimal_places=2),
         ),
         pedidos_30d=Count("id"),
@@ -838,8 +886,8 @@ def catalog(request):
 
     ctx = {
         "products": products,
-        "company": company,           # <<< usado no header/rodapé
-        "now": now,                   # se o template usar {{ now|date:"Y" }}
+        "company": company,
+        "now": now,
         "kpi_today_new": today_new,
         "kpi_receita_30d": receita_30d,
         "kpi_pedidos_30d": pedidos_30d,
@@ -847,20 +895,15 @@ def catalog(request):
     }
     return render(request, "vendas/home_public.html", ctx)
 
-
 # -------------------- Lista de pedidos (admin simplificado) --------------------
 @staff_member_required
 def orders_list(request):
-    """
-    Lista de pedidos com busca/filtro/paginação e KPIs.
-    """
     qs = (
         Order.objects
         .select_related("product", "customer")
         .order_by("-created_at")
     )
 
-    # Filtros
     status = (request.GET.get("status") or "").lower()
     if status in {"pending", "paid", "cancelled"}:
         qs = qs.filter(status=status)
@@ -875,22 +918,20 @@ def orders_list(request):
             Q(id__icontains=q)
         )
 
-    # Paginação
     paginator = Paginator(qs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    # KPIs (receita últimos 30d e ticket médio de todos pagos)
     last_30 = timezone.now() - timedelta(days=30)
     receita_30 = (
         Order.objects.filter(status="paid", created_at__gte=last_30)
-        .aggregate(total=Coalesce(Sum("amount"), Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))))
+        .aggregate(total=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2))))
         .get("total") or Decimal("0")
     )
     paid_agg = (
         Order.objects.filter(status="paid")
         .aggregate(
-            total=Coalesce(Sum("amount"), Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))),
-            qtd=Coalesce(Count("id"), Value(0))
+            total=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2))),
+            qtd=Coalesce(Count("id"), V(0))
         )
     )
     ticket_medio = Decimal("0")
@@ -915,12 +956,10 @@ def orders_list(request):
     }
     return render(request, "vendas/orders_list.html", ctx)
 
-
 @staff_member_required
 @require_POST
 def order_send_reminder(request, order_id):
     order = get_object_or_404(Order.objects.select_related("product", "customer"), pk=order_id)
-
     next_url = request.POST.get("next") or request.META.get("HTTP_REFERER") or reverse("orders_list")
 
     if order.status != "pending":
@@ -936,44 +975,29 @@ def order_send_reminder(request, order_id):
     except Exception as e:
         logger.exception("Falha ao enviar lembrete (order %s): %s", order.id, e)
         messages.error(request, "Erro ao enviar e-mail de lembrete.")
-
     return redirect(next_url)
 
-from datetime import timedelta, datetime, time
-from decimal import Decimal
-from django.shortcuts import render
-from django.utils import timezone
-from django.db.models import Sum, Count, DecimalField, IntegerField, Value as V
-from django.db.models.functions import TruncDate, Coalesce
-from .models import Order
-
+# -------------------- Dashboard Mobile --------------------
 def mobile_dashboard(request):
     days = int(request.GET.get("days", 7))
     tz = timezone.get_current_timezone()
 
-    # Datas (locais) e limites (aware) do período
-    end_date = timezone.localdate()                          # hoje (data)
-    start_date = end_date - timedelta(days=days-1)           # início (data)
+    end_date = timezone.localdate()
+    start_date = end_date - timedelta(days=days-1)
     start_dt = timezone.make_aware(datetime.combine(start_date, time.min), tz)
     end_exclusive = timezone.make_aware(datetime.combine(end_date + timedelta(days=1), time.min), tz)
 
-    # Query base do período
     qs_period = Order.objects.filter(created_at__gte=start_dt, created_at__lt=end_exclusive)
     qs_paid_period = qs_period.filter(status="paid")
 
-    # KPIs do PERÍODO
     kpi_period_orders = qs_period.aggregate(
         c=Coalesce(Count("id"), V(0, output_field=IntegerField()))
     )["c"] or 0
-
     kpi_period_revenue = qs_paid_period.aggregate(
-        s=Coalesce(Sum("amount"),
-                   V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
+        s=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
     )["s"] or Decimal("0")
-
     kpi_period_ticket = (kpi_period_revenue / kpi_period_orders) if kpi_period_orders else Decimal("0")
 
-    # KPIs de HOJE (só para referência)
     today_start = timezone.make_aware(datetime.combine(end_date, time.min), tz)
     tomorrow_start = timezone.make_aware(datetime.combine(end_date + timedelta(days=1), time.min), tz)
     qs_today = Order.objects.filter(created_at__gte=today_start, created_at__lt=tomorrow_start)
@@ -982,25 +1006,19 @@ def mobile_dashboard(request):
     kpi_today_orders = qs_today.aggregate(
         c=Coalesce(Count("id"), V(0, output_field=IntegerField()))
     )["c"] or 0
-
     kpi_today_revenue = qs_today_paid.aggregate(
-        s=Coalesce(Sum("amount"),
-                   V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
+        s=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
     )["s"] or Decimal("0")
-
     kpi_today_ticket = (kpi_today_revenue / kpi_today_orders) if kpi_today_orders else Decimal("0")
 
-    # Séries diárias dentro do período
     by_day_orders = (qs_period
         .annotate(d=TruncDate("created_at"))
         .values("d")
         .annotate(n=Coalesce(Count("id"), V(0, output_field=IntegerField()))))
-
     by_day_revenue = (qs_paid_period
         .annotate(d=TruncDate("created_at"))
         .values("d")
-        .annotate(s=Coalesce(Sum("amount"),
-                             V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))) )
+        .annotate(s=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))))
 
     map_cnt = {r["d"]: int(r["n"]) for r in by_day_orders}
     map_rev = {r["d"]: float(r["s"]) for r in by_day_revenue}
@@ -1012,21 +1030,17 @@ def mobile_dashboard(request):
         orders.append(map_cnt.get(d, 0))
         revenue.append(round(map_rev.get(d, 0.0), 2))
 
-    # Mix por forma de pagamento (pagos no período)
     pt_label = {"pix": "Pix", "card": "Cartão"}
     mix_qs = qs_paid_period.values("payment_type").annotate(
-        s=Coalesce(Sum("amount"),
-                   V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
+        s=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2)))
     )
     mix_labels = [pt_label.get(r["payment_type"], r["payment_type"]) for r in mix_qs]
     mix_values = [float(r["s"]) for r in mix_qs]
 
-    # Top produtos do período (pagos)
     top_qs = (qs_paid_period
         .values("product__title")
         .annotate(
-            receita=Coalesce(Sum("amount"),
-                             V(0, output_field=DecimalField(max_digits=12, decimal_places=2))),
+            receita=Coalesce(Sum("amount"), V(0, output_field=DecimalField(max_digits=12, decimal_places=2))),
             qtd=Coalesce(Count("id"), V(0, output_field=IntegerField())),
         )
         .order_by("-receita")[:6]
@@ -1037,30 +1051,66 @@ def mobile_dashboard(request):
     ]
 
     ctx = {
-        # Período exibido
         "period_start": start_date,
         "period_end": end_date,
         "days": days,
-
-        # KPIs período (usados nos cards)
         "kpi_period_orders": kpi_period_orders,
         "kpi_period_revenue": kpi_period_revenue,
         "kpi_period_ticket": kpi_period_ticket,
-
-        # KPIs hoje (rodapé auxiliar)
         "kpi_today_orders": kpi_today_orders,
         "kpi_today_revenue": kpi_today_revenue,
         "kpi_today_ticket": kpi_today_ticket,
-
-        # Gráficos
         "labels": labels,
         "revenue": revenue,
         "orders": orders,
         "mix_labels": mix_labels,
         "mix_values": mix_values,
-
-        # Lista
         "top_products": top_products,
     }
     return render(request, "vendas/mobile_dashboard.html", ctx)
 
+# vendas/views.py
+from django.contrib import messages
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect
+
+from .models import Order, ProductType, ShippingStatus
+
+@login_required
+@require_POST
+def order_shipping_update(request, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+
+    # Só faz sentido para produto físico
+    if not order.product or order.product.product_type != ProductType.PHYSICAL:
+        messages.error(request, "Este pedido não requer envio.")
+        return redirect(request.POST.get("next") or "orders_list")
+
+    shipped_flag   = request.POST.get("shipped") in ("on", "true", "1", "yes")
+    tracking_code  = (request.POST.get("tracking_code") or "").strip()
+
+    # 🔧 aceita ambos nomes por compatibilidade; preferimos tracking_carrier
+    carrier = (
+        (request.POST.get("tracking_carrier") or "").strip()
+        or (request.POST.get("shipping_carrier") or "").strip()
+    )
+    other_name = (request.POST.get("carrier_name") or "").strip()
+    if carrier == "outro" and other_name:
+        carrier = other_name
+
+    order.tracking_code   = tracking_code
+    order.tracking_carrier = carrier
+
+    if shipped_flag:
+        order.shipping_status = ShippingStatus.SHIPPED
+        if not order.shipped_at:
+            order.shipped_at = timezone.now()
+    else:
+        order.shipping_status = ShippingStatus.PENDING
+        order.shipped_at = None
+
+    order.save(update_fields=["tracking_code", "tracking_carrier", "shipping_status", "shipped_at"])
+    messages.success(request, "Informações de envio atualizadas.")
+    return redirect(request.POST.get("next") or "orders_list")

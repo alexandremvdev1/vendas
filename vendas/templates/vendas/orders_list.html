@@ -6,33 +6,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    :root{
-      --muted:#64748b;
-      --base-font:14px;            /* ↓ base menor (Bootstrap usa rem) */
-    }
+    :root{ --muted:#64748b; --base-font:14px; }
     html{ font-size: var(--base-font); }
     body{ background:#f6f8fb; }
-
-    /* Ajustes de escala locais */
-    .navbar-brand{ font-size:1rem; }                /* logo menor */
+    .navbar-brand{ font-size:1rem; }
     .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
 
-    .kpi{
-      background:#fff; border:1px solid #e5e7eb; border-radius:.75rem; padding:.75rem 1rem;
-    }
+    .kpi{ background:#fff; border:1px solid #e5e7eb; border-radius:.75rem; padding:.6rem .8rem; }
     .kpi .small{ font-size:.8rem; color:var(--muted); }
-    .kpi .val{ font-weight:700; font-size:1.1rem; } /* números mais discretos */
+    .kpi .val{ font-weight:700; font-size:1.05rem; }
 
-    .badge, .badge-pill{ font-size:.72rem; }
-    .badge-pill{ border-radius:999px; padding:.25rem .55rem; font-weight:600; }
-
-    .table{ font-size:.875rem; }                    /* tabela menor */
+    .table{ font-size:.85rem; }
+    .table td,.table th{ vertical-align:middle; }
     .table thead th{ white-space:nowrap; }
-    .table td, .table th{ vertical-align:middle; }
 
-    .form-control, .form-select{ font-size:.875rem; padding:.375rem .5rem; }
-    .btn{ font-size:.875rem; }
-
+    .actions-wrap{ display:inline-flex; gap:.35rem; align-items:center; justify-content:flex-end; flex-wrap:nowrap; }
+    .btn-icon{ padding:.2rem .4rem; line-height:1; }
+    .form-control, .form-select { font-size:.75rem; padding:.25rem .4rem; height:28px; }
+    .w-code{ width:120px; }
+    .w-carrier{ width:140px; }
+    .w-carrier-name{ width:150px; }
+    .chip{ font-size:.72rem; border-radius:999px; padding:.15rem .5rem; background:#eef2ff; color:#334155; display:inline-block; }
     .pagination .page-link{ font-size:.8rem; padding:.3rem .55rem; }
   </style>
 </head>
@@ -41,7 +35,6 @@
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{% url 'home' %}">YLA Criativa</a>
     <div class="d-flex gap-2">
-      <!-- cores diferentes -->
       <a class="btn btn-info btn-sm" href="{% url 'home' %}">Catálogo</a>
       <a class="btn btn-secondary btn-sm" href="{% url 'orders_list' %}">Pedidos</a>
       {% if user.is_authenticated %}
@@ -54,10 +47,8 @@
 </nav>
 
 <main class="container py-4">
-
-  <!-- Botão voltar para a Home -->
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <a class="btn btn-outline-info btn-sm" href="{% url 'home' %}">← Voltar para a Home</a>
+    <a class="btn btn-outline-info btn-sm" href="{% url 'home' %}">← Voltar</a>
   </div>
 
   {% if messages %}
@@ -69,39 +60,19 @@
   {% endif %}
 
   <div class="row g-3 mb-3">
-    <div class="col-6 col-md-3">
-      <div class="kpi">
-        <div class="small">Pedidos</div>
-        <div class="val">{{ counts.todos }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="kpi">
-        <div class="small">Pendente</div>
-        <div class="val">{{ counts.pending }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="kpi">
-        <div class="small">Ticket médio</div>
-        <div class="val">R$ {{ ticket_medio }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="kpi">
-        <div class="small">Receita (30d)</div>
-        <div class="val">R$ {{ receita_30 }}</div>
-      </div>
-    </div>
+    <div class="col-6 col-md-3"><div class="kpi"><div class="small">Pedidos</div><div class="val">{{ counts.todos }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="kpi"><div class="small">Pendente</div><div class="val">{{ counts.pending }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="kpi"><div class="small">Ticket médio</div><div class="val">R$ {{ ticket_medio }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="kpi"><div class="small">Receita (30d)</div><div class="val">R$ {{ receita_30 }}</div></div></div>
   </div>
 
   <form class="row g-2 align-items-end mb-3" method="get">
-    <div class="col-12 col-md-4">
+    <div class="col-12 col-md-5">
       <label class="form-label small text-muted mb-1">Buscar</label>
       <input type="search" name="q" value="{{ q }}" class="form-control" placeholder="Cliente, e-mail, CPF, produto ou #id">
     </div>
     <div class="col-6 col-md-3">
-      <label class="form-label small text-muted mb-1">Status</label>
+      <label class="form-label small text-muted mb-1">Status (pagamento)</label>
       <select name="status" class="form-select">
         <option value="" {% if not status %}selected{% endif %}>Todos</option>
         <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pendente</option>
@@ -109,14 +80,8 @@
         <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>Cancelado</option>
       </select>
     </div>
-    <div class="col-6 col-md-2">
-      <!-- primário para filtrar -->
-      <button class="btn btn-primary w-100">Filtrar</button>
-    </div>
-    <div class="col-12 col-md-3 text-md-end">
-      <!-- cor diferente para limpar -->
-      <a class="btn btn-dark w-100 w-md-auto" href="{% url 'orders_list' %}">Limpar</a>
-    </div>
+    <div class="col-6 col-md-2"><button class="btn btn-primary w-100">Filtrar</button></div>
+    <div class="col-12 col-md-2 text-md-end"><a class="btn btn-dark w-100 w-md-auto" href="{% url 'orders_list' %}">Limpar</a></div>
   </form>
 
   {% if orders %}
@@ -124,68 +89,98 @@
       <table class="table table-sm table-hover bg-white rounded-3 overflow-hidden align-middle">
         <thead class="table-light">
           <tr>
-            <th>#</th>
-            <th>Data</th>
-            <th>Cliente</th>
-            <th>E-mail</th>
-            <th>Produto</th>
-            <th>Valor</th>
-            <th>Forma</th>
-            <th>Status</th>
-            <th class="text-end">Ações</th>
+            <th>#</th><th>Data</th><th>Cliente</th><th>E-mail</th><th>Produto</th>
+            <th>Valor</th><th>Forma</th><th>Status</th><th class="text-end">Ações</th>
           </tr>
         </thead>
         <tbody>
           {% for o in orders %}
-            <tr>
-              <td class="text-muted">#{{ o.id }}</td>
-              <td>{{ o.created_at|date:"d/m/Y H:i" }}</td>
-              <td>{{ o.customer.full_name }}</td>
-              <td><a href="mailto:{{ o.customer.email }}">{{ o.customer.email }}</a></td>
-              <td class="text-truncate" style="max-width:240px;">{{ o.product.title }}</td>
-              <td>R$ {{ o.amount }}</td>
-              <td>{{ o.get_payment_type_display }}</td>
-              <td>
-                {% if o.status == 'paid' %}
-                  <span class="badge bg-success">Pago</span>
-                {% elif o.status == 'pending' %}
-                  <span class="badge bg-warning text-dark">Pendente</span>
+          <tr>
+            <td class="text-muted">#{{ o.id }}</td>
+            <td>{{ o.created_at|date:"d/m/Y H:i" }}</td>
+            <td>{{ o.customer.full_name }}</td>
+            <td><a href="mailto:{{ o.customer.email }}">{{ o.customer.email }}</a></td>
+            <td class="text-truncate" style="max-width:260px;" title="{{ o.product.title }}">{{ o.product.title }}</td>
+            <td>R$ {{ o.amount }}</td>
+            <td>{{ o.get_payment_type_display }}</td>
+            <td>
+              {% if o.status == 'paid' %}
+                <span class="badge bg-success">Pago</span>
+              {% elif o.status == 'pending' %}
+                <span class="badge bg-warning text-dark">Pendente</span>
+              {% else %}
+                <span class="badge bg-secondary">Cancelado</span>
+              {% endif %}
+              {% if o.product.is_physical %}
+                {% if o.shipping_status == 'shipped' %}
+                  <span class="chip ms-1">Enviado</span>
                 {% else %}
-                  <span class="badge bg-secondary">Cancelado</span>
+                  <span class="chip ms-1">Pend. envio</span>
                 {% endif %}
-              </td>
-              <td class="text-end">
-                {% if o.payment_type == 'pix' %}
-                  <!-- azul para "Ver" -->
-                  <a class="btn btn-sm btn-primary" href="{% url 'payment_pending' o.id %}">Ver</a>
-                {% else %}
-                  <!-- verde para "Checkout" -->
-                  <a class="btn btn-sm btn-success" href="{% url 'pay_card' o.id %}">Checkout</a>
+              {% endif %}
+            </td>
+
+            <td class="text-end">
+              <div class="actions-wrap">
+
+                {% if o.product.is_physical %}
+                <form action="{% url 'order_shipping_update' o.id %}" method="post" class="d-inline-flex align-items-center gap-1">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+                  <div class="form-check form-switch m-0" title="Marcar como enviado">
+                    <input class="form-check-input" type="checkbox" name="shipped" {% if o.shipping_status == 'shipped' %}checked{% endif %}>
+                  </div>
+
+                  <input class="form-control form-control-sm w-code"
+                         name="tracking_code"
+                         value="{{ o.tracking_code|default:'' }}"
+                         placeholder="cód.">
+
+                  <select class="form-select form-select-sm w-carrier" name="tracking_carrier" data-target="#carrierName{{ o.id }}">
+                    <option value="" {% if not o.tracking_carrier %}selected{% endif %}>Transportadora</option>
+                    <option value="Correios" {% if o.tracking_carrier == 'Correios' %}selected{% endif %}>Correios</option>
+                    <option value="Jadlog" {% if o.tracking_carrier == 'Jadlog' %}selected{% endif %}>Jadlog</option>
+                    <option value="J&T" {% if o.tracking_carrier == 'J&T' %}selected{% endif %}>J&amp;T</option>
+                    <option value="Loggi" {% if o.tracking_carrier == 'Loggi' %}selected{% endif %}>Loggi</option>
+                    <option value="Sequoia" {% if o.tracking_carrier == 'Sequoia' %}selected{% endif %}>Sequoia</option>
+                    <option value="outro" {% if o.tracking_carrier and o.tracking_carrier != 'Correios' and o.tracking_carrier != 'Jadlog' and o.tracking_carrier != 'J&T' and o.tracking_carrier != 'Loggi' and o.tracking_carrier != 'Sequoia' %}selected{% endif %}>Outro…</option>
+                  </select>
+
+                  <input class="form-control form-control-sm w-carrier-name"
+                         name="carrier_name"
+                         id="carrierName{{ o.id }}"
+                         value="{% if o.tracking_carrier and o.tracking_carrier != 'Correios' and o.tracking_carrier != 'Jadlog' and o.tracking_carrier != 'J&T' and o.tracking_carrier != 'Loggi' and o.tracking_carrier != 'Sequoia' %}{{ o.tracking_carrier }}{% endif %}"
+                         placeholder="Nome transp.">
+
+                  <button class="btn btn-outline-primary btn-sm btn-icon" title="Salvar" aria-label="Salvar">💾</button>
+                </form>
                 {% endif %}
 
-                <!-- Lembrar por e-mail: info -->
+                {% if o.payment_type == 'pix' %}
+                  <a class="btn btn-outline-primary btn-sm btn-icon" href="{% url 'payment_pending' o.id %}" title="Ver (Pix)" aria-label="Ver">👁️</a>
+                {% else %}
+                  <a class="btn btn-outline-success btn-sm btn-icon" href="{% url 'pay_card' o.id %}" title="Checkout (Cartão)" aria-label="Checkout">💳</a>
+                {% endif %}
+
                 <form action="{% url 'order_send_reminder' o.id %}" method="post" class="d-inline">
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                  <button class="btn btn-sm btn-info" {% if o.status != 'pending' %}disabled{% endif %}>
-                    E-mail
-                  </button>
+                  <button class="btn btn-outline-info btn-sm btn-icon" {% if o.status != 'pending' %}disabled{% endif %} title="Enviar e-mail">✉️</button>
                 </form>
 
-                <!-- WhatsApp: amarelo -->
                 {% if o.customer.phone %}
-                  <a
-                    class="btn btn-sm btn-warning ms-1 btn-wa"
-                    target="_blank" rel="noopener"
-                    data-phone="{{ o.customer.phone }}"
-                    data-name="{{ o.customer.full_name|default:'' }}"
-                    data-order="{{ o.id }}"
-                    data-link="{% if o.payment_type == 'pix' %}{% url 'payment_pending' o.id %}{% else %}{% url 'pay_card' o.id %}{% endif %}">
-                    WhatsApp
-                  </a>
+                  <a class="btn btn-outline-warning btn-sm btn-icon btn-wa"
+                     target="_blank" rel="noopener"
+                     data-phone="{{ o.customer.phone }}"
+                     data-name="{{ o.customer.full_name|default:'' }}"
+                     data-order="{{ o.id }}"
+                     data-link="{% if o.payment_type == 'pix' %}{% url 'payment_pending' o.id %}{% else %}{% url 'pay_card' o.id %}{% endif %}"
+                     title="WhatsApp" aria-label="WhatsApp">🟢</a>
                 {% endif %}
-              </td>
-            </tr>
+              </div>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -212,7 +207,20 @@
 </main>
 
 <script>
-/* monta os links de WhatsApp de forma robusta */
+/* Preencher nome da transportadora ao escolher no <select> (sem lógica de template) */
+document.addEventListener('change', function(ev){
+  const sel = ev.target.closest('select[name="tracking_carrier"]');
+  if (!sel) return;
+  const target = document.querySelector(sel.getAttribute('data-target'));
+  if (!target) return;
+  if (sel.value && sel.value !== 'outro') {
+    target.value = sel.value;
+  } else if (sel.value === 'outro' && !target.value) {
+    target.focus();
+  }
+});
+
+/* Links do WhatsApp compactos */
 (function(){
   const waBtns = document.querySelectorAll('.btn-wa');
   waBtns.forEach(btn=>{
@@ -220,26 +228,16 @@
     const name = (btn.dataset.name || '').trim();
     const order = btn.dataset.order || '';
     const linkPath = btn.dataset.link || '/';
-
     let num = raw.replace(/\D/g,'');
-    if (!num){
-      btn.classList.add('disabled');
-      btn.setAttribute('aria-disabled','true');
-      return;
-    }
+    if (!num){ btn.classList.add('disabled'); btn.setAttribute('aria-disabled','true'); return; }
     num = num.replace(/^0+/, '');
-    if (!/^55/.test(num) && (num.length === 10 || num.length === 11)) {
-      num = '55' + num;
-    }
-
+    if (!/^55/.test(num) && (num.length === 10 || num.length === 11)) { num = '55' + num; }
     const origin = window.location.origin;
     const absLink = linkPath.startsWith('http') ? linkPath : origin + linkPath;
-
     const greeting = name ? `Olá, ${name}!` : 'Olá!';
     const msg = `${greeting} Aqui é da YLA Criativa. Sobre seu pedido #${order}, segue o link: ${absLink}`;
     const url = new URL(`https://wa.me/${num}`);
     url.searchParams.set('text', msg);
-
     btn.href = url.toString();
     btn.title = 'Enviar WhatsApp';
   });

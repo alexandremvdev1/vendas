@@ -54,13 +54,8 @@
     .badge-discount{ font-weight:800; }
     .discount-row{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 
-    /* badge sobre a imagem (mini cards) */
-    .pin{
-      position:absolute; top:.5rem; left:.5rem;
-      background:#ef4444; color:#fff; font-weight:800; font-size:.8rem;
-      border-radius:.5rem; padding:.2rem .5rem;
-      box-shadow:0 6px 16px rgba(0,0,0,.25);
-    }
+    .pin{ position:absolute; top:.5rem; left:.5rem; background:#ef4444; color:#fff; font-weight:800; font-size:.8rem;
+      border-radius:.5rem; padding:.2rem .5rem; box-shadow:0 6px 16px rgba(0,0,0,.25); }
 
     /* Carrossel */
     .more-wrap{position:relative;}
@@ -72,10 +67,8 @@
     .more-prev{left:-.5rem;} .more-next{right:-.5rem;}
     @media (max-width:576px){ .mini-card{flex-basis: 78%;} .more-prev{left:.25rem;} .more-next{right:.25rem;} }
 
-    /* Evita scroll lateral */
     html, body { max-width:100%; overflow-x:hidden; }
 
-    /* Chamada acima do form */
     .checkout-call { text-align:center; font-weight:700; font-size:1.05rem; color:var(--ink); margin-bottom:1rem; }
 
     /* Rodapé */
@@ -84,15 +77,8 @@
     .contact-footer a:hover{ text-decoration:underline; }
     .contact-footer .brand{ font-weight:800; letter-spacing:.3px; color:#fff; }
     .contact-footer .muted{ color:#9aa3b2; }
-    .contact-footer .logo{
-      max-height:48px; width:auto; object-fit:contain; margin-bottom:.5rem;
-      filter: drop-shadow(0 2px 6px rgba(0,0,0,.35));
-    }
-    .trust{
-      display:grid; gap:.5rem; background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.12); border-radius:.9rem; padding:.9rem 1rem;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-    }
+    .contact-footer .logo{ max-height:48px; width:auto; object-fit:contain; margin-bottom:.5rem; filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+    .trust{ display:grid; gap:.5rem; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:.9rem; padding:.9rem 1rem; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
     .trust .item{ display:flex; align-items:center; gap:.6rem; font-weight:600; color:#e7eeff; justify-content:center; }
     .trust .ico{width:22px; height:22px; display:inline-grid; place-items:center; border-radius:50%; background:rgba(255,255,255,.12); font-size:.9rem;}
     .spinner{display:inline-block; width:1rem; height:1rem; border:.15em solid #fff; border-right-color:transparent; border-radius:50%; animation: spin .6s linear infinite; vertical-align:-2px;}
@@ -101,7 +87,6 @@
 </head>
 <body>
 
-<!-- NAV (limpa) -->
 <nav class="navbar nav-lite navbar-dark py-2">
   <div class="container">
     <span class="navbar-brand">Loja Digital</span>
@@ -121,7 +106,6 @@
   </div>
 </nav>
 
-<!-- HERO -->
 <header class="hero py-4 py-md-5">
   <div class="container">
     <h1 class="hero-title">Checkout</h1>
@@ -131,16 +115,13 @@
 
 <main class="container py-4 py-md-5">
   <div class="row g-4">
-    <!-- Esquerda: mídia/descrição -->
+    <!-- Esquerda -->
     <div class="col-12 col-lg-6">
       <div class="card card-clean position-relative">
         {% if product.has_promo %}
-          <!-- badge sobre a imagem (principal) -->
           <div class="pin js-discount"
                data-old="{{ product.price|floatformat:2 }}"
-               data-new="{{ product.price_to_charge|floatformat:2 }}">
-            -{{ product.discount_percent }}
-          </div>
+               data-new="{{ product.price_to_charge|floatformat:2 }}">-{{ product.discount_percent }}%</div>
         {% endif %}
 
         {% if product.image %}
@@ -176,8 +157,7 @@
                 loading="lazy"
                 referrerpolicy="strict-origin-when-cross-origin"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen>
-              </iframe>
+                allowfullscreen></iframe>
             </div>
           {% endif %}
         </div>
@@ -188,7 +168,6 @@
     <div class="col-12 col-lg-6">
       <div class="card card-clean p-3 p-md-4">
         <div class="checkout-call">📝 Preencha seus dados para continuar a compra</div>
-        <h2 class="h5 mb-3">Seus dados</h2>
 
         {% if form.non_field_errors %}
           <div class="alert alert-danger py-2">
@@ -198,6 +177,8 @@
 
         <form method="post" novalidate id="checkout-form">
           {% csrf_token %}
+
+          <h2 class="h5 mb-3">Seus dados</h2>
           <div class="row g-3">
             <div class="col-12 field">
               {{ form.full_name.label_tag }}
@@ -220,6 +201,101 @@
               {% if form.email.errors %}<div class="invalid-feedback d-block">{% for e in form.email.errors %}{{ e }}{% endfor %}</div>{% endif %}
             </div>
           </div>
+
+          {% if needs_shipping %}
+            <hr class="my-4">
+            <h2 class="h5 mb-3">Endereço de entrega</h2>
+
+            {% if address_errors %}
+              <div class="alert alert-danger py-2">
+                {% for e in address_errors %}<div>{{ e }}</div>{% endfor %}
+              </div>
+            {% endif %}
+
+            {% if addresses %}
+              <div class="mb-3">
+                <div class="small text-muted mb-1">Escolha um endereço salvo</div>
+                {% for a in addresses %}
+                  <label class="d-block border rounded p-2 mb-2">
+                    <input type="radio" name="address_id" value="{{ a.id }}">
+                    <span class="ms-1">
+                      {{ a.recipient_name|default:a.customer.full_name }} —
+                      {{ a.street }}, {{ a.number }} — {{ a.city }}/{{ a.state }}
+                      • CEP {{ a.zip_code }}
+                      {% if a.is_default %}<span class="badge text-bg-secondary ms-2">padrão</span>{% endif %}
+                    </span>
+                  </label>
+                {% endfor %}
+                <div class="form-text">Ou preencha abaixo um novo endereço.</div>
+              </div>
+            {% endif %}
+
+            <div id="ship-block" class="row g-3">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Apelido</label>
+                <input class="form-control" name="label"
+                       value="{{ address_form_data.label|default:'' }}"
+                       placeholder="Casa, Trabalho…">
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Destinatário</label>
+                <input class="form-control" name="recipient_name"
+                       value="{{ address_form_data.recipient_name|default:form.full_name.value }}"
+                       placeholder="Quem vai receber">
+              </div>
+
+              <div class="col-6 col-md-4">
+                <label class="form-label">CEP</label>
+                <input id="id_zip_code" class="form-control" name="zip_code"
+                       value="{{ address_form_data.zip_code|default:'' }}"
+                       placeholder="00000-000">
+              </div>
+              <div class="col-6 col-md-8">
+                <label class="form-label">Logradouro</label>
+                <input class="form-control" name="street"
+                       value="{{ address_form_data.street|default:'' }}"
+                       placeholder="Rua/Av.">
+              </div>
+
+              <div class="col-6 col-md-4">
+                <label class="form-label">Número</label>
+                <input class="form-control" name="number"
+                       value="{{ address_form_data.number|default:'' }}"
+                       placeholder="Nº">
+              </div>
+              <div class="col-6 col-md-8">
+                <label class="form-label">Complemento</label>
+                <input class="form-control" name="complement"
+                       value="{{ address_form_data.complement|default:'' }}"
+                       placeholder="Apto, bloco… (opcional)">
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Bairro</label>
+                <input class="form-control" name="district"
+                       value="{{ address_form_data.district|default:'' }}"
+                       placeholder="Bairro">
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label">Cidade</label>
+                <input class="form-control" name="city"
+                       value="{{ address_form_data.city|default:'' }}"
+                       placeholder="Cidade">
+              </div>
+              <div class="col-3 col-md-2">
+                <label class="form-label">UF</label>
+                <input class="form-control" name="state" maxlength="2"
+                       value="{{ address_form_data.state|default:'' }}"
+                       placeholder="UF">
+              </div>
+
+              <div class="col-3 col-md-2 d-none">
+                <label class="form-label">País</label>
+                <input class="form-control" name="country"
+                       value="{{ address_form_data.country|default:'Brasil' }}">
+              </div>
+            </div>
+          {% endif %}
 
           <div class="d-grid gap-2 mt-3">
             <button class="btn btn-success py-2" type="submit" id="btn-pix" aria-label="Pagar com Pix">
@@ -254,11 +330,7 @@
           {% with eff=p.price_to_charge old=p.price %}
           <div class="card mini-card">
             {% if p.has_promo %}
-              <div class="pin js-discount"
-                   data-old="{{ old|floatformat:2 }}"
-                   data-new="{{ eff|floatformat:2 }}">
-                -{{ p.discount_percent }}%
-              </div>
+              <div class="pin js-discount" data-old="{{ old|floatformat:2 }}" data-new="{{ eff|floatformat:2 }}">-{{ p.discount_percent }}%</div>
             {% endif %}
             {% if p.image %}
               <img class="mini-img" src="{{ p.image.url }}" alt="{{ p.title }}">
@@ -269,14 +341,12 @@
             {% endif %}
             <div class="card-body p-2">
               <div class="small fw-semibold text-truncate" title="{{ p.title }}">{{ p.title }}</div>
-
               {% if p.has_promo %}
                 <div class="small text-muted"><del>R$ {{ old|floatformat:2 }}</del></div>
                 <div class="fw-bold">R$ {{ eff|floatformat:2 }}</div>
               {% else %}
                 <div class="fw-bold">R$ {{ old|floatformat:2 }}</div>
               {% endif %}
-
               <a class="btn btn-sm btn-primary w-100 mt-2" href="{{ p.get_checkout_url }}">Comprar</a>
             </div>
           </div>
@@ -289,7 +359,6 @@
   {% endif %}
 </main>
 
-<!-- Rodapé (Company + selos) -->
 <footer class="contact-footer py-4 mt-5 text-center">
   <div class="container">
     {% if company %}
@@ -312,7 +381,6 @@
           {% endif %}
         </div>
       </div>
-
       <div class="row justify-content-center mt-3">
         <div class="col-12 col-lg-8">
           <div class="trust">
@@ -351,6 +419,11 @@
     if (v.length <= 10) return v.replace(/(\d{2})(\d{4})(\d{0,4}).*/, "($1) $2-$3");
     return v.replace(/(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
   }
+  function formatCEP(v){
+    v = onlyDigits(v).slice(0,8);
+    if (v.length <= 5) return v;
+    return v.replace(/(\d{5})(\d{0,3}).*/, "$1-$2");
+  }
   function maskWithStableCaret(input, formatter){
     if (!input) return;
     const apply = ()=>{
@@ -378,10 +451,15 @@
 
   const $cpf   = document.querySelector('[data-mask="cpf"]')   || document.getElementById('id_cpf');
   const $phone = document.querySelector('[data-mask="phone"]') || document.getElementById('id_phone');
+  const $cep   = document.querySelector('[name="zip_code"]') || document.getElementById('id_zip_code') || document.getElementById('id_cep');
+
   maskWithStableCaret($cpf, formatCPF);
   maskWithStableCaret($phone, formatPhone);
+  if ($cep) maskWithStableCaret($cep, formatCEP);
+
   if ($phone){ $phone.setAttribute('inputmode','numeric'); $phone.setAttribute('autocomplete','tel'); }
   if ($cpf){   $cpf.setAttribute('inputmode','numeric'); }
+  if ($cep){   $cep.setAttribute('inputmode','numeric'); $cep.setAttribute('autocomplete','postal-code'); }
 
   // ---------- Método de pagamento ----------
   btnPix  && btnPix.removeAttribute('name');
@@ -415,6 +493,99 @@
     });
   }
 
+  // ---------- Scroll até endereço se o back-end sinalizou erros ----------
+  const hadErrors = {% if address_errors %}true{% else %}false{% endif %};
+  if (hadErrors){
+    const ship = document.getElementById('ship-block');
+    if (ship){ ship.scrollIntoView({behavior:'smooth', block:'center'}); }
+  }
+
+  // ---------- Endereço: alternar entre salvo x novo ----------
+  const addrRadios = document.querySelectorAll('input[name="address_id"]');
+  const newFields  = document.querySelectorAll('#ship-block input, #ship-block select, #ship-block textarea');
+
+  function setNewFieldsEnabled(enabled){
+    newFields.forEach(el => { el.disabled = !enabled; el.classList.toggle('disabled', !enabled); });
+  }
+  function updateAddressMode(){
+    let anyChecked = false;
+    addrRadios.forEach(r => { if (r.checked) anyChecked = true; });
+    setNewFieldsEnabled(!anyChecked);
+  }
+  addrRadios.forEach(r => r.addEventListener('change', updateAddressMode));
+  updateAddressMode(); // estado inicial
+
+  // ---------- ViaCEP: auto-preencher por CEP ----------
+  const $street   = document.querySelector('[name="street"]');
+  const $district = document.querySelector('[name="district"]');
+  const $city     = document.querySelector('[name="city"]');
+  const $state    = document.querySelector('[name="state"]');
+
+  // UF sempre maiúscula
+  if ($state){
+    $state.addEventListener('input', ()=>{ $state.value = ($state.value||'').toUpperCase().slice(0,2); });
+  }
+
+  // ajuda visual abaixo do CEP
+  const $cepHelp = (()=>{
+    if (!$cep) return null;
+    const help = document.createElement('div');
+    help.className = 'form-text';
+    const holder = $cep.closest('.col-6, .col-md-4, .field, .mb-3') || $cep.parentElement;
+    (holder || $cep.parentElement).appendChild(help);
+    return help;
+  })();
+
+  let lastCepFetched = '';
+  let cepDebounce;
+
+  function setIfEmpty(input, value){
+    if (!input) return;
+    const v = (input.value || '').trim();
+    if (!v && value) input.value = value;
+  }
+  function showCepMsg(msg){ if ($cepHelp) $cepHelp.textContent = msg || ''; }
+
+  async function fetchViaCep(digits){
+    try{
+      showCepMsg('Buscando endereço…');
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (data.erro){
+        showCepMsg('CEP não encontrado.');
+        return;
+      }
+      setIfEmpty($street,   data.logradouro || '');
+      setIfEmpty($district, data.bairro || '');
+      setIfEmpty($city,     data.localidade || '');
+      if ($state && !$state.value) $state.value = (data.uf || '').toUpperCase();
+      showCepMsg('');
+    }catch(e){
+      showCepMsg('Falha ao consultar CEP.');
+    }
+  }
+
+  function handleCepInput(){
+    clearTimeout(cepDebounce);
+    cepDebounce = setTimeout(()=>{
+      if (!$cep) return;
+      const digits = ($cep.value || '').replace(/\D/g,'');
+      if (digits.length === 8){
+        if (digits !== lastCepFetched){
+          lastCepFetched = digits;
+          fetchViaCep(digits);
+        }
+      }else{
+        showCepMsg('');
+      }
+    }, 250);
+  }
+
+  if ($cep){
+    $cep.addEventListener('input', handleCepInput);
+    $cep.addEventListener('blur', handleCepInput);
+  }
+
   // ---------- Carrossel ----------
   const row  = document.getElementById('moreRow');
   const prev = document.querySelector('.more-prev');
@@ -428,10 +599,10 @@
   prev && prev.addEventListener('click', ()=> scrollByCard(-1));
   next && next.addEventListener('click', ()=> scrollByCard(1));
 
-  // ---------- Fallback para preencher % de desconto (se back-end não enviar) ----------
+  // ---------- Fallback para badge de desconto ----------
   document.querySelectorAll('.js-discount').forEach(el=>{
     const txt = (el.textContent || '').trim();
-    if (/^\-?\d+%$/.test(txt)) return; // já veio pronto
+    if (/^\-?\d+%$/.test(txt)) return;
     const oldStr = (el.dataset.old || '').replace(',','.');
     const newStr = (el.dataset.new || '').replace(',','.');
     const oldN = parseFloat(oldStr), newN = parseFloat(newStr);
@@ -444,5 +615,6 @@
   });
 })();
 </script>
+
 </body>
 </html>

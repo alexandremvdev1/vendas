@@ -29,4 +29,7 @@ urlpatterns = [
     path("pedidos/", views.orders_list, name="orders_list"),
     path("pedidos/<int:order_id>/lembrar/", views.order_send_reminder, name="order_send_reminder"),
     path("m/dashboard/", views.mobile_dashboard, name="mobile_dashboard"),
+
+    path("orders/<int:order_id>/shipping/", views.order_shipping_update, name="order_shipping_update"),
+    
 ]

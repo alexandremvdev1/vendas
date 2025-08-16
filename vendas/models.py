@@ -17,7 +17,7 @@ from django.core.validators import RegexValidator
 # Storages do Cloudinary (com fallback local)
 # ---------------------------------------
 try:
-    # Requer: cloudinary>=1.41 e django-cloudinary-storage>=0.3.0
+    # cloudinary>=1.41 / django-cloudinary-storage>=0.3.0
     from cloudinary_storage.storage import (
         MediaCloudinaryStorage,
         RawMediaCloudinaryStorage,
@@ -25,7 +25,6 @@ try:
     IMAGE_STORAGE_KW = {"storage": MediaCloudinaryStorage()}
     RAW_STORAGE_KW = {"storage": RawMediaCloudinaryStorage()}
 except Exception:
-    # Se não estiver instalado/configurado, usa o disco local (MEDIA_ROOT)
     IMAGE_STORAGE_KW = {}
     RAW_STORAGE_KW = {}
 
@@ -82,15 +81,42 @@ def get_mp_public_key() -> str:
 def default_order_expiry():
     return timezone.now() + timedelta(days=2)
 
+def _only_digits(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+def _format_cnpj(digits: str) -> str:
+    if len(digits) != 14:
+        return digits
+    return f"{digits[0:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:14]}"
+
+def normalize_cep(v: str) -> str:
+    d = re.sub(r"\D", "", v or "")
+    if len(d) == 8:
+        return f"{d[:5]}-{d[5:]}"
+    return v or ""
+
+phone_e164_validator = RegexValidator(
+    regex=r"^\+\d{10,15}$",
+    message="Use o formato internacional (E.164), ex.: +556300000000",
+)
+
+# UF choices para formulários
+UF_CHOICES = [
+    ("AC","AC"),("AL","AL"),("AP","AP"),("AM","AM"),("BA","BA"),("CE","CE"),
+    ("DF","DF"),("ES","ES"),("GO","GO"),("MA","MA"),("MT","MT"),("MS","MS"),
+    ("MG","MG"),("PA","PA"),("PB","PB"),("PR","PR"),("PE","PE"),("PI","PI"),
+    ("RJ","RJ"),("RN","RN"),("RS","RS"),("RO","RO"),("RR","RR"),("SC","SC"),
+    ("SP","SP"),("SE","SE"),("TO","TO"),
+]
 
 # ---------------------------------------
 # Cliente
 # ---------------------------------------
 class Customer(models.Model):
     full_name = models.CharField("Nome completo", max_length=160)
-    cpf = models.CharField("CPF", max_length=14, unique=True)  # salvo formatado 000.000.000-00
+    cpf = models.CharField("CPF", max_length=14, unique=True)  # 000.000.000-00
     email = models.EmailField("E-mail")
-    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)  # salvo em E.164 (+55...)
+    phone = models.CharField("Telefone/WhatsApp", max_length=30, blank=True)  # E.164 (+55...)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -101,19 +127,6 @@ class Customer(models.Model):
 
     @staticmethod
     def normalize_br_phone(value: str) -> str:
-        """
-        Normaliza números BR para E.164: +55 + DDD (2) + número (8/9).
-        Exemplos aceitos:
-          - "63..."            -> "+5563..."
-          - "(63) 9 9999-9999" -> "+5563999999999"
-          - "5563999999999"    -> "+5563999999999"
-          - "0063..."          -> "+5563..."
-        Regras:
-          - Mantém apenas dígitos
-          - Remove zeros à esquerda
-          - Garante prefixo 55
-          - Se vier com mais de 11 dígitos (após país), mantém os últimos 11
-        """
         s = re.sub(r"\D", "", (value or ""))
         if not s:
             return ""
@@ -124,31 +137,84 @@ class Customer(models.Model):
         return f"+55{core}" if core else ""
 
     def save(self, *args, **kwargs):
-        # sempre salva normalizado
         self.phone = self.normalize_br_phone(self.phone)
         super().save(*args, **kwargs)
 
+# ---------------------------------------
+# Endereço (para produtos físicos)
+# ---------------------------------------
+class Address(models.Model):
+    customer = models.ForeignKey('Customer', on_delete=models.CASCADE, related_name="addresses")
+    label = models.CharField("Apelido (ex.: Casa, Trabalho)", max_length=40, blank=True)
+    recipient_name = models.CharField("Nome do destinatário", max_length=160, blank=True)
+
+    cep = models.CharField("CEP", max_length=9)
+    street = models.CharField("Logradouro", max_length=160)
+    number = models.CharField("Número", max_length=20)
+    complement = models.CharField("Complemento", max_length=80, blank=True)
+    neighborhood = models.CharField("Bairro", max_length=120)
+    city = models.CharField("Cidade", max_length=120)
+    state = models.CharField("UF", max_length=2, choices=UF_CHOICES)
+    country = models.CharField("País", max_length=60, default="Brasil")
+
+    is_default = models.BooleanField("Endereço padrão?", default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Endereço"
+        verbose_name_plural = "Endereços"
+        ordering = ["-is_default", "-created_at"]
+        indexes = [
+            models.Index(fields=["customer", "is_default"]),
+            models.Index(fields=["cep"]),
+        ]
+
+    def __str__(self):
+        base = f"{self.street}, {self.number} - {self.city}/{self.state}"
+        return f"{self.label or 'Endereço'} • {base}"
+
+    def clean(self):
+        self.cep = normalize_cep(self.cep)
+
+    def save(self, *args, **kwargs):
+        # normaliza CEP e garante exclusividade do 'padrão'
+        self.cep = normalize_cep(self.cep)
+        super().save(*args, **kwargs)
+        if self.is_default:
+            Address.objects.filter(customer=self.customer).exclude(pk=self.pk).update(is_default=False)
+
+    @property
+    def cep_digits(self) -> str:
+        return re.sub(r"\D", "", self.cep or "")
+
+    @property
+    def full_address(self) -> str:
+        comp = f", {self.complement}" if self.complement else ""
+        return f"{self.street}, {self.number}{comp} - {self.neighborhood}, {self.city}/{self.state} • {self.cep}"
 
 # ---------------------------------------
 # Produto
 # ---------------------------------------
+class ProductType(models.TextChoices):
+    DIGITAL  = "digital", "Digital"
+    PHYSICAL = "physical", "Físico"
+
 class Product(models.Model):
     title = models.CharField("Título", max_length=160)
     slug = models.SlugField(unique=True, max_length=180, editable=False)
     checkout_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     description = models.TextField("Descrição", blank=True)
 
-    # Imagem (Cloudinary quando ativo)
     image = models.ImageField(
         "Imagem",
         upload_to="produtos/imagens/",
         blank=True, null=True,
         **IMAGE_STORAGE_KW,
     )
-
     video_url = models.URLField("Vídeo (URL)", blank=True)
 
-    # Arquivo digital (Cloudinary raw)
     digital_file = models.FileField(
         "Arquivo digital",
         upload_to="produtos/arquivos/",
@@ -156,13 +222,19 @@ class Product(models.Model):
         **RAW_STORAGE_KW,
     )
 
-    # Preço
     price = models.DecimalField("Preço (R$)", max_digits=10, decimal_places=2)
 
-    # ✔️ Promoção
     promo_active = models.BooleanField("Promoção ativa?", default=False)
     promo_price = models.DecimalField(
         "Preço promocional (R$)", max_digits=10, decimal_places=2, blank=True, null=True
+    )
+
+    product_type = models.CharField(
+        "Tipo de produto",
+        max_length=10,
+        choices=ProductType.choices,
+        default=ProductType.DIGITAL,
+        db_index=True,
     )
 
     active = models.BooleanField("Ativo", default=True)
@@ -170,6 +242,7 @@ class Product(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["active", "product_type", "created_at"])]
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -185,23 +258,14 @@ class Product(models.Model):
 
     @property
     def has_promo(self) -> bool:
-        """
-        True se a promoção estiver ativa e o preço promocional válido e menor que o normal.
-        """
         return bool(self.promo_active and self.promo_price is not None and self.promo_price < self.price)
 
     @property
     def price_to_charge(self):
-        """
-        Preço efetivo a cobrar (considerando promoção).
-        """
         return self.promo_price if self.has_promo else self.price
 
     @property
     def discount_amount(self) -> Decimal:
-        """
-        Valor absoluto de desconto (R$). 0 se não estiver em promoção.
-        """
         try:
             if self.has_promo and self.price and self.promo_price is not None:
                 return (self.price - self.promo_price).copy_abs()
@@ -211,40 +275,31 @@ class Product(models.Model):
 
     @property
     def discount_percent(self) -> int:
-        """
-        Percentual de desconto arredondado para inteiro. 0 se não estiver em promoção.
-        Ex.: price=100, promo_price=79.90 -> 20 (%)
-        """
         try:
             if self.has_promo and self.price and self.price > 0:
                 pct = (Decimal("1") - (self.price_to_charge / self.price)) * 100
-                return int(pct.quantize(Decimal("1")))  # arredonda para inteiro
+                return int(pct.quantize(Decimal("1")))
         except Exception:
             pass
         return 0
 
-    # Sinônimos para compatibilidade com templates antigos
+    # Sinônimos p/ compatibilidade
     @property
-    def promo_percent(self) -> int:
-        return self.discount_percent
+    def promo_percent(self) -> int: return self.discount_percent
+    @property
+    def promo_pct(self) -> int:     return self.discount_percent
+    @property
+    def discount_pct(self) -> int:  return self.discount_percent
 
     @property
-    def promo_pct(self) -> int:
-        return self.discount_percent
-
-    @property
-    def discount_pct(self) -> int:
-        return self.discount_percent
+    def is_physical(self) -> bool:
+        return self.product_type == ProductType.PHYSICAL
 
     @property
     def video_embed_url(self):
-        """
-        (opcional) gera URL de embed p/ YouTube/Vimeo a partir de video_url normal.
-        """
         url = (self.video_url or "").strip()
         if not url:
             return ""
-        # YouTube (watch ou youtu.be)
         if "youtube.com/watch" in url or "youtu.be/" in url:
             vid = None
             if "watch?v=" in url:
@@ -253,16 +308,22 @@ class Product(models.Model):
                 m = re.search(r"youtu\.be/([^?&/]+)", url)
                 vid = m.group(1) if m else None
             return f"https://www.youtube.com/embed/{vid}" if vid else url
-        # Vimeo
         if "vimeo.com/" in url:
             vid = url.rstrip("/").split("/")[-1]
             return f"https://player.vimeo.com/video/{vid}"
         return url
 
-
 # ---------------------------------------
 # Pedido (Pix + Cartão)
 # ---------------------------------------
+# vendas/models.py
+from django.db import models
+# ... imports já existentes ...
+
+class ShippingStatus(models.TextChoices):
+    PENDING = "pending", "Pendente de envio"
+    SHIPPED = "shipped", "Enviado"
+
 class Order(models.Model):
     STATUS = [
         ("pending", "Pendente"),
@@ -284,18 +345,37 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField("Expira em", default=default_order_expiry)
 
+    # Endereço de envio (quando produto físico)
+    shipping_address = models.ForeignKey(
+        Address, on_delete=models.PROTECT, null=True, blank=True, related_name="orders"
+    )
+
+    # ✅ Status de envio
+    shipping_status = models.CharField(
+        "Status de envio",
+        max_length=12,
+        choices=ShippingStatus.choices,
+        default=ShippingStatus.PENDING,
+        db_index=True,
+    )
+
+    # Rastreio / envio (campos que você já tinha adicionado)
+    tracking_code = models.CharField("Código de rastreio", max_length=80, blank=True)
+    tracking_carrier = models.CharField("Transportadora/Serviço", max_length=40, blank=True)
+    shipped_at = models.DateTimeField("Enviado em", null=True, blank=True)
+
     # Gateway (Mercado Pago)
     gateway = models.CharField(max_length=40, default="mercadopago")
     preference_id = models.CharField(max_length=120, blank=True)
     external_ref = models.CharField(max_length=120, blank=True, help_text="Ex: order-<id>")
 
-    # IDs/dados Pix (quando for Pix via /v1/payments)
+    # PIX (Payments API)
     payment_id = models.CharField("MP Payment ID", max_length=64, blank=True, null=True, unique=True)
     pix_qr_code = models.TextField("Pix copia-e-cola", blank=True)
     pix_qr_base64 = models.TextField("QR base64", blank=True)
     pix_ticket_url = models.URLField("Ticket URL", blank=True)
 
-    # Metadados não-sensíveis de cartão (quando for cartão)
+    # Cartão (metadados leves)
     installments = models.PositiveIntegerField("Parcelas", default=1)
     card_brand = models.CharField("Bandeira", max_length=20, blank=True)
     card_last4 = models.CharField("Final", max_length=4, blank=True)
@@ -308,6 +388,8 @@ class Order(models.Model):
             models.Index(fields=["payment_type"]),
             models.Index(fields=["created_at"]),
             models.Index(fields=["product", "status"]),
+            models.Index(fields=["customer", "created_at"]),
+            models.Index(fields=["shipping_status"]),  # ✅ índice p/ filtrar no admin
         ]
 
     def __str__(self):
@@ -321,19 +403,56 @@ class Order(models.Model):
     def is_expired(self):
         return self.is_pending and timezone.now() > self.expires_at
 
+    @property
+    def needs_shipping(self) -> bool:
+        try:
+            return self.product.product_type == ProductType.PHYSICAL
+        except Exception:
+            return False
+
+    def clean(self):
+        # Regras de consistência simples
+        if self.product and self.product.product_type == ProductType.PHYSICAL and not self.shipping_address:
+            raise ValidationError({"shipping_address": "Informe o endereço de envio para produtos físicos."})
+        if self.product and self.product.product_type == ProductType.DIGITAL and self.shipping_address:
+            raise ValidationError({"shipping_address": "Produtos digitais não devem ter endereço de envio."})
+
+    # ✅ Helpers de envio
+    def mark_shipped(self, *, tracking_code=None, carrier=None, when=None, save=True):
+        """
+        Marca como ENVIADO e preenche rastreio/opcionalmente data.
+        """
+        self.shipping_status = ShippingStatus.SHIPPED
+        if tracking_code is not None:
+            self.tracking_code = tracking_code
+        if carrier is not None:
+            self.tracking_carrier = carrier
+        if when is None:
+            when = timezone.now()
+        self.shipped_at = when
+        if save:
+            self.save(update_fields=["shipping_status", "tracking_code", "tracking_carrier", "shipped_at"])
+
+    def mark_pending_shipping(self, *, save=True):
+        """
+        Volta para PENDENTE DE ENVIO (sem apagar rastreio).
+        """
+        self.shipping_status = ShippingStatus.PENDING
+        if save:
+            self.save(update_fields=["shipping_status"])
+
     def mark_paid(self):
         """
-        Marca como pago, garante o link de download e dispara o e-mail de confirmação.
+        Marca como pago. Cria link de download apenas para produtos digitais.
         """
         if self.status != "paid":
             self.status = "paid"
             self.save(update_fields=["status"])
-        # garante o DownloadLink (idempotente)
-        try:
-            _ = self.download_link
-        except DownloadLink.DoesNotExist:
-            DownloadLink.create_for_order(self)
-        # envia o e-mail (não bloqueia fluxo se falhar)
+        if self.product and self.product.product_type == ProductType.DIGITAL:
+            try:
+                _ = self.download_link
+            except DownloadLink.DoesNotExist:
+                DownloadLink.create_for_order(self)
         try:
             from .emails import send_order_paid_email
             send_order_paid_email(self)
@@ -354,7 +473,7 @@ class Order(models.Model):
 
 
 # ---------------------------------------
-# Link de download
+# Link de download (apenas útil para digitais)
 # ---------------------------------------
 class DownloadLink(models.Model):
     order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="download_link")
@@ -374,23 +493,9 @@ class DownloadLink(models.Model):
     def create_for_order(cls, order, days_valid=7):
         return cls.objects.create(order=order, expires_at=timezone.now() + timedelta(days=days_valid))
 
-
-# --- helpers e validators para Company ---
-def _only_digits(s: str) -> str:
-    return re.sub(r"\D", "", s or "")
-
-def _format_cnpj(digits: str) -> str:
-    # recebe '12345678000195' e devolve '12.345.678/0001-95'
-    if len(digits) != 14:
-        return digits
-    return f"{digits[0:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:14]}"
-
-phone_e164_validator = RegexValidator(
-    regex=r"^\+\d{10,15}$",
-    message="Use o formato internacional (E.164), ex.: +556300000000",
-)
-
-
+# ---------------------------------------
+# Empresa
+# ---------------------------------------
 class Company(models.Model):
     corporate_name = models.CharField("Razão social", max_length=160)
     trade_name     = models.CharField("Nome fantasia", max_length=160, blank=True)
@@ -406,7 +511,7 @@ class Company(models.Model):
         "Logo",
         upload_to="empresa/logos/",
         blank=True, null=True,
-        **(globals().get("IMAGE_STORAGE_KW", {})),  # usa Cloudinary se estiver ativo
+        **(globals().get("IMAGE_STORAGE_KW", {})),
     )
 
     active     = models.BooleanField("Ativa?", default=True)
@@ -422,7 +527,6 @@ class Company(models.Model):
         return self.trade_name or self.corporate_name
 
     def clean(self):
-        # Normaliza e valida CNPJ (verificação simples: 14 dígitos)
         d = _only_digits(self.cnpj)
         if len(d) != 14:
             raise ValidationError({"cnpj": "CNPJ deve ter 14 dígitos."})
@@ -437,26 +541,19 @@ class Company(models.Model):
 
     @property
     def phone_display(self) -> str:
-        """
-        Exibe phone_e164 em formato BR legível: (DD) 99999-9999 ou (DD) 9999-9999.
-        Se não conseguir formatar, retorna o próprio phone_e164.
-        """
         d = re.sub(r"\D", "", self.phone_e164 or "")
         if not d:
             return ""
-        core = d[2:] if d.startswith("55") else d  # remove DDI 55, se houver
-        if len(core) == 11:  # 9 dígitos
+        core = d[2:] if d.startswith("55") else d
+        if len(core) == 11:
             ddd, n1, n2 = core[:2], core[2:7], core[7:]
             return f"({ddd}) {n1}-{n2}"
-        if len(core) == 10:  # 8 dígitos
+        if len(core) == 10:
             ddd, n1, n2 = core[:2], core[2:6], core[6:]
             return f"({ddd}) {n1}-{n2}"
         return self.phone_e164 or ""
 
     @property
     def whatsapp_link(self) -> str:
-        """
-        Link direto para WhatsApp baseado em phone_e164.
-        """
         d = re.sub(r"\D", "", self.phone_e164 or "")
         return f"https://wa.me/{d}" if d else ""
