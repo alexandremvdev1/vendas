@@ -16,7 +16,7 @@
     .navbar-brand{ font-size:1rem; }
     .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
     .kpi{ background:#fff; border:1px solid #e5e7eb; border-radius:.8rem; padding:.75rem 1rem; }
-    .kpi .small{ color:var(--muted); font-size:.8rem; }
+    .kpi .small{ color:var(--muted); }
     .kpi .fs-4{ font-size:1.15rem !important; }
     .kpi .fw-bold{ font-weight:700 !important; }
     .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:.9rem; }
@@ -30,7 +30,13 @@
 <nav class="navbar nav-pro navbar-dark mb-3">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{{ home_url|default:'#' }}">YLA Criativa</a>
+
     <div class="d-flex align-items-center gap-2 ms-auto">
+      <!-- 👇 NOVO: Botão para voltar ao home do outro app -->
+      <a class="btn btn-sm btn-outline-light" href="{{ home_url|default:'#' }}">← Voltar para a Loja</a>
+
+      <span class="vr text-white opacity-50 mx-1"></span>
+
       <a class="btn btn-sm btn-light" href="{% url 'precificacao:produto_create' %}">+ Produto</a>
       <a class="btn btn-sm btn-warning" href="{% url 'precificacao:orcamento_create' %}">+ Orçamento</a>
       <a class="btn btn-sm btn-info" href="{% url 'precificacao:materia_prima_create' %}">+ Matéria-prima</a>

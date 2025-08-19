@@ -11,7 +11,8 @@
     .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); } .navbar-brand{ font-size:1rem; }
     .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
     .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:.9rem; }
-    .text-muted-2{ color:var(--muted); } .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+    .text-muted-2{ color:var(--muted); }
+    .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
     input[type=text], input[type=number], input[type=email], input[type=url], input[type=datetime], input[type=date], textarea, select{
       display:block; width:100%; background:#fff; border:1px solid #e5e7eb; border-radius:.6rem; padding:.5rem .65rem; font-size:.9rem;
     }
@@ -21,10 +22,14 @@
 </head>
 <body>
 {% url 'home' as home_url %}
+{% url 'precificacao:dashboard' as dash_url %}
 <nav class="navbar nav-pro navbar-dark">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{{ home_url|default:'#' }}">YLA Criativa</a>
     <div class="d-flex align-items-center gap-2 ms-auto">
+      <!-- NOVO: voltar para o painel -->
+      <a class="btn btn-sm btn-outline-light" href="{{ dash_url|default:'#' }}">← Voltar para o Painel</a>
+      <span class="vr text-white opacity-50 mx-1"></span>
       <a class="btn btn-sm btn-secondary" href="{% url 'precificacao:orcamento_create' %}">Novo orçamento</a>
       <a class="btn btn-sm btn-light" href="{% url 'precificacao:produto_create' %}">Novo produto</a>
     </div>
@@ -69,7 +74,7 @@
 
       <div class="d-flex gap-2">
         <button class="btn btn-success">Salvar</button>
-        <a class="btn btn-outline-secondary" href="{{ home_url|default:'#' }}">Cancelar</a>
+        <a class="btn btn-outline-secondary" href="{{ dash_url|default:'#' }}">Cancelar</a>
       </div>
     </form>
   </div>
