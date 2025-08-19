@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Precificação • Orçamento {{ orc.numero }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+  <style>
+    :root{
+      --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18);
+      --g1:#0b1020; --g2:#111a3a; --base-font:14px;
+    }
+    html{ font-size: var(--base-font); } body{ background:#f6f8fb; color:var(--ink); }
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); } .navbar-brand{ font-size:1rem; }
+    .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
+
+    .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:.9rem; }
+    .text-muted-2{ color:var(--muted); }
+
+    .table{ font-size:.875rem; }
+    .table thead th{
+      font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b;
+      background:#f8fafc;
+    }
+    .table tfoot th, .table tfoot td{ border-top:2px solid #0b1020; font-weight:800; }
+
+    .badge-status{ font-size:.8rem; }
+  </style>
+</head>
+<body>
+{% url 'home' as home_url %}
+{% url 'precificacao:dashboard' as dash_url %}
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{{ home_url|default:'#' }}">YLA Criativa</a>
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      <a class="btn btn-sm btn-light" href="{{ dash_url|default:'#' }}">Painel</a>
+      <a class="btn btn-sm btn-warning" href="{% url 'precificacao:orcamento_create' %}">+ Orçamento</a>
+      <a class="btn btn-sm btn-info" href="{% url 'precificacao:produto_create' %}">+ Produto</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-3 py-lg-4">
+  <!-- Cabeçalho do orçamento -->
+  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <h1 class="h5 m-0">Orçamento {{ orc.numero }}</h1>
+      <span class="badge bg-secondary badge-status">{{ orc.get_status_display }}</span>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-sm btn-primary"
+         href="{% url 'precificacao:orcamento_print' orc.pk %}?auto=1"
+         target="_blank" rel="noopener">Imprimir</a>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{% url 'precificacao:orcamento_print' orc.pk %}"
+         target="_blank" rel="noopener">Visualizar</a>
+      <a class="btn btn-sm btn-light" href="{{ dash_url|default:'#' }}">Voltar ao painel</a>
+    </div>
+  </div>
+
+  <!-- Bloco com informações -->
+  <div class="card card-clean p-3 mb-3">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <h2 class="h6 mb-2">Dados gerais</h2>
+        <dl class="row mb-0">
+          <dt class="col-5 col-md-4 text-muted">Cliente</dt>
+          <dd class="col-7 col-md-8">{{ orc.cliente }}</dd>
+
+          <dt class="col-5 col-md-4 text-muted">Criado em</dt>
+        <dd class="col-7 col-md-8">{{ orc.criado_em|date:"d/m/Y H:i" }}</dd>
+
+          <dt class="col-5 col-md-4 text-muted">Validade (dias)</dt>
+          <dd class="col-7 col-md-8">{{ orc.validade_dias }}</dd>
+        </dl>
+      </div>
+      <div class="col-md-6">
+        <h2 class="h6 mb-2">Condições</h2>
+        <dl class="row mb-0">
+          <dt class="col-5 col-md-4 text-muted">Desconto (%)</dt>
+          <dd class="col-7 col-md-8">{{ orc.desconto_percentual|default:"0.00" }}</dd>
+
+          <dt class="col-5 col-md-4 text-muted">Acréscimo (%)</dt>
+          <dd class="col-7 col-md-8">{{ orc.acrescimo_percentual|default:"0.00" }}</dd>
+
+          <dt class="col-5 col-md-4 text-muted">Observações</dt>
+          <dd class="col-7 col-md-8">{{ orc.observacoes|default:"—" }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- Itens -->
+  <div class="card card-clean p-3">
+    <h2 class="h6 mb-2">Itens do orçamento</h2>
+    <div class="table-responsive">
+      <table class="table align-middle bg-white rounded-3 overflow-hidden">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th style="width:10%" class="text-center">Qtd</th>
+            <th style="width:15%" class="text-end">Preço unit.</th>
+            <th style="width:15%" class="text-end">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in orc.itens.all %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ i.produto.nome }}</div>
+                {% if i.descricao_externa %}
+                  <div class="small text-muted-2">{{ i.descricao_externa }}</div>
+                {% endif %}
+              </td>
+              <td class="text-center">{{ i.quantidade }}</td>
+              <td class="text-end">R$ {{ i.preco_unitario|floatformat:2 }}</td>
+              <td class="text-end">R$ {{ i.subtotal|floatformat:2 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="3" class="text-end">Total final</th>
+            <th class="text-end">R$ {{ orc.valor_total_cache|default:0|floatformat:2 }}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-2">
+      <a class="btn btn-primary"
+         href="{% url 'precificacao:orcamento_print' orc.pk %}?auto=1"
+         target="_blank" rel="noopener">Imprimir</a>
+      <a class="btn btn-outline-secondary"
+         href="{% url 'precificacao:orcamento_print' orc.pk %}"
+         target="_blank" rel="noopener">Visualizar</a>
+      <a class="btn btn-light" href="{{ dash_url|default:'#' }}">Voltar ao painel</a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

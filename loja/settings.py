@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "vendas",
+    "precificacao",
 ]
 
 # ---- Cloudinary: ativa só se tiver credenciais (evita crash em dev/CI)

@@ -10,6 +10,7 @@ urlpatterns = [
 
     # App principal
     path('', include('vendas.urls')),
+    path("precificacao/", include("precificacao.urls")),
 
     # Autenticação
     path(

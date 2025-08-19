@@ -62,20 +62,22 @@
 
     {% url 'sales_report' as sales_url %}
     {% url 'mobile_dashboard' as mobile_url %}
+    {% url 'precificacao:dashboard' as precif_url %}
     <div class="d-flex align-items-center gap-2 ms-auto">
       {% if user.is_authenticated and user.is_staff and sales_url %}
         <a class="btn btn-sm btn-info" href="{{ sales_url }}">Relatório</a>
-        <!-- abre em nova aba -->
-        <a class="btn btn-sm btn-success"
+        <a class="btn btn-sm btn成功"
            href="{% url 'admin:vendas_product_add' %}"
            target="_blank" rel="noopener">+ Produto</a>
       {% endif %}
 
       {% if user.is_authenticated and user.is_staff %}
         <a class="btn btn-sm btn-secondary" href="{% url 'orders_list' %}">Pedidos</a>
+        {% if precif_url %}
+          <a class="btn btn-sm btn-primary" href="{{ precif_url }}">🧮 Precificação</a>
+        {% endif %}
       {% endif %}
 
-      <!-- Botão para o Dashboard Mobile -->
       <a class="btn btn-sm btn-warning"
          href="{{ mobile_url }}"
          target="_blank" rel="noopener">📊 Dashboard</a>
@@ -89,6 +91,7 @@
     </div>
   </div>
 </nav>
+
 
 <main class="container py-3 py-lg-4">
   <!-- KPIs -->

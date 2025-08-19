@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <title>Precificação • Novo Produto</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    :root{ --ink:#0f172a; --muted:#64748b; --ring:rgba(37,99,235,.18); --g1:#0b1020; --g2:#111a3a; --base-font:14px; }
+    html{ font-size: var(--base-font); } body{ background:#f6f8fb; color:var(--ink); }
+    .nav-pro{ background:linear-gradient(90deg,var(--g1),var(--g2)); } .navbar-brand{ font-size:1rem; }
+    .navbar .btn{ font-size:.85rem; padding:.25rem .5rem; }
+    .card-clean{ border:none; box-shadow:0 10px 24px rgba(17,24,39,.08); border-radius:.9rem; }
+    .text-muted-2{ color:var(--muted); }
+    .table thead th{ font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:#64748b; background:#f8fafc; }
+    input[type=text], input[type=number], textarea, select{
+      display:block; width:100%; background:#fff; border:1px solid #e5e7eb; border-radius:.6rem; padding:.5rem .65rem; font-size:.9rem;
+    }
+    input:focus, textarea:focus, select:focus{ outline:0; box-shadow:0 0 0 .25rem var(--ring); border-color:#93c5fd; }
+    .btn.btn-sm, .btn-sm{ font-size:.8rem; padding:.3rem .5rem; }
+    .small-hint{ font-size:.8rem; color:var(--muted); }
+  </style>
+</head>
+<body>
+{% url 'home' as home_url %}
+<nav class="navbar nav-pro navbar-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="{{ home_url|default:'#' }}">YLA Criativa</a>
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      <a class="btn btn-sm btn-secondary" href="{% url 'precificacao:orcamento_create' %}">Novo orçamento</a>
+      <a class="btn btn-sm btn-light" href="{% url 'precificacao:produto_create' %}">Novo produto</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-3 py-lg-4">
+  <h1 class="h5 mb-3">Novo Produto</h1>
+
+  <div class="card card-clean p-3 mb-3">
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <!-- Dados do produto -->
+      {{ form.as_p }}
+
+      <h2 class="h6 mt-3 mb-2">Componentes (matérias-primas)</h2>
+      <div class="small-hint mb-2">
+        • Para <strong>papel</strong> (base = <code>FOLHA</code>), você pode informar <strong>Páginas</strong>, <strong>Itens/folha</strong> e <strong>Duplex</strong> — o sistema calcula a quantidade de <em>folhas</em> automaticamente.<br>
+        • Use <strong>Área (cm)</strong> quando a MP tiver unidade-base <code>m²</code> (o sistema converte de cm² para m²).<br>
+        • Use <strong>Comprimento (m)</strong> quando a MP tiver unidade-base <code>m</code>.
+      </div>
+
+      {{ formset.management_form }}
+      <div class="table-responsive">
+        <table class="table align-middle bg-white rounded-3 overflow-hidden">
+          <thead>
+            <tr>
+              <th>Matéria-prima</th>
+              <th style="width:160px">Modo</th>
+              <th style="width:120px">Páginas</th>
+              <th style="width:120px">Itens/folha</th>
+              <th style="width:120px">Duplex</th>
+              <th style="width:140px">Qtd. direta</th>
+              <th style="width:120px">Larg. (cm)</th>
+              <th style="width:120px">Alt. (cm)</th>
+              <th style="width:150px">Comp. (m)</th>
+              <th style="width:120px">% Perda</th>
+              <th>Obs</th>
+              <th style="width:60px">Del</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for f in formset %}
+            <tr data-row>
+              <td>{{ f.materia_prima }}</td>
+              <td>{{ f.modo_entrada }}</td>
+
+              <!-- Campos de PÁGINAS (usados no modo 'quantidade' p/ base FOLHA) -->
+              <td data-col="pag">{{ f.paginas }}</td>
+              <td data-col="itf">{{ f.itens_por_folha }}</td>
+              <td data-col="dup" class="text-center">{{ f.duplex }}</td>
+
+              <!-- Quantidade direta (modo 'quantidade') -->
+              <td data-col="qtd">{{ f.quantidade_uso }}</td>
+
+              <!-- Área (cm) → m² (modo 'area') -->
+              <td data-col="L">{{ f.largura_cm }}</td>
+              <td data-col="A">{{ f.altura_cm }}</td>
+
+              <!-- Comprimento (m) (modo 'comprimento') -->
+              <td data-col="C">{{ f.comprimento_m }}</td>
+
+              <td>{{ f.perda_percentual }}</td>
+              <td>{{ f.observacoes }}</td>
+              <td>{% if f.instance.pk %}{{ f.DELETE }}{% endif %}</td>
+            </tr>
+            {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+            {% if f.non_field_errors %}
+              <tr><td colspan="12" class="text-danger small">{{ f.non_field_errors }}</td></tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-success">Salvar</button>
+        <a class="btn btn-outline-secondary" href="{{ home_url|default:'#' }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script>
+(function(){
+  function toggleCell(inputOrTd, show){
+    if(!inputOrTd) return;
+    const td = inputOrTd.closest ? inputOrTd.closest('td') : inputOrTd;
+    if(td) td.style.display = show ? '' : 'none';
+  }
+
+  function updateRow(row){
+    const modo = row.querySelector('select[name$="-modo_entrada"]')?.value || 'quantidade';
+
+    const $q   = row.querySelector('td[data-col="qtd"] input');
+    const $pag = row.querySelector('td[data-col="pag"] input');
+    const $itf = row.querySelector('td[data-col="itf"] input');
+    const $dup = row.querySelector('td[data-col="dup"] input'); // checkbox
+
+    const $L   = row.querySelector('td[data-col="L"] input');
+    const $A   = row.querySelector('td[data-col="A"] input');
+    const $C   = row.querySelector('td[data-col="C"] input');
+
+    const isQtd  = (modo === 'quantidade');
+    const isArea = (modo === 'area');
+    const isComp = (modo === 'comprimento');
+
+    // quantidade / páginas
+    toggleCell($q,   isQtd);
+    toggleCell($pag, isQtd);
+    toggleCell($itf, isQtd);
+    toggleCell($dup, isQtd);
+    if($q)   $q.disabled   = !isQtd;
+    if($pag) $pag.disabled = !isQtd;
+    if($itf) $itf.disabled = !isQtd;
+    if($dup) $dup.disabled = !isQtd;
+
+    // área
+    toggleCell($L, isArea); if($L) $L.disabled = !isArea;
+    toggleCell($A, isArea); if($A) $A.disabled = !isArea;
+
+    // comprimento
+    toggleCell($C, isComp); if($C) $C.disabled = !isComp;
+  }
+
+  document.querySelectorAll('tr[data-row]').forEach((row)=>{
+    const modoSel = row.querySelector('select[name$="-modo_entrada"]');
+    if(modoSel){ modoSel.addEventListener('change', ()=> updateRow(row)); }
+    updateRow(row); // inicial
+  });
+})();
+</script>
+</body>
+</html>
